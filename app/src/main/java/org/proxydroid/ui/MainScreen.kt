@@ -138,6 +138,10 @@ fun MainScreen(
                 onNewProfile = onNewProfile,
             )
             ProxyForm(profile = state.profile, edit = onProfileEdit)
+            AutoGatewayCard(
+                enabled = state.profile.useGatewayAsHost,
+                onChange = { onProfileEdit { useGatewayAsHost = it } },
+            )
             AdvancedSection(
                 profile = state.profile,
                 expanded = state.advancedExpanded,
@@ -280,6 +284,24 @@ private fun ProfileCard(
     }
 }
 
+@Composable
+private fun AutoGatewayCard(enabled: Boolean, onChange: (Boolean) -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Auto gateway", style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.height(8.dp))
+            ToggleRow(
+                title = "Use Wi-Fi gateway as proxy host",
+                subtitle = "Automatically use the current network's default gateway " +
+                    "(e.g. the phone's hotspot address 192.168.43.1) as the upstream " +
+                    "proxy host, instead of the manually configured Host.",
+                checked = enabled,
+                onChange = onChange,
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ProxyForm(profile: Profile, edit: (Profile.() -> Unit) -> Unit) {
@@ -311,6 +333,7 @@ private fun ProxyForm(profile: Profile, edit: (Profile.() -> Unit) -> Unit) {
                     onValueChange = { v -> edit { host = v.trim() } },
                     label = { Text("Host") },
                     singleLine = true,
+                    enabled = !profile.useGatewayAsHost,
                     modifier = Modifier.weight(2f),
                 )
                 OutlinedTextField(
