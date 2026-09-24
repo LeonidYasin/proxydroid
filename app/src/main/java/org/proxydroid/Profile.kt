@@ -49,6 +49,15 @@ class Profile {
     var isBypassApps: Boolean = false
     var isAutoConnect: Boolean = false
 
+    /**
+     * When true, the VPN service resolves the current network's default
+     * gateway at start time and uses it as the upstream proxy host, ignoring
+     * [host]. Useful when sharing a local proxy over a Wi-Fi hotspot: the
+     * hotspot gateway (e.g. 192.168.43.1) is where the local proxy listens,
+     * and it may change between sessions.
+     */
+    var useGatewayAsHost: Boolean = false
+
     fun init() {
         name = ""
         host = ""
@@ -68,6 +77,7 @@ class Profile {
         isAutoSetProxy = false
         isBypassApps = false
         isAutoConnect = false
+        useGatewayAsHost = false
     }
 
     fun getProfile(settings: SharedPreferences) {
@@ -91,6 +101,7 @@ class Profile {
         isAutoSetProxy = settings.getBoolean("isAutoSetProxy", false)
         isBypassApps = settings.getBoolean("isBypassApps", false)
         isAutoConnect = settings.getBoolean("isAutoConnect", false)
+        useGatewayAsHost = settings.getBoolean("useGatewayAsHost", false)
     }
 
     fun setProfile(settings: SharedPreferences) {
@@ -113,6 +124,7 @@ class Profile {
             putBoolean("isAutoSetProxy", isAutoSetProxy)
             putBoolean("isBypassApps", isBypassApps)
             putBoolean("isAutoConnect", isAutoConnect)
+            putBoolean("useGatewayAsHost", useGatewayAsHost)
             apply()
         }
     }
@@ -138,6 +150,7 @@ class Profile {
         json["isAutoSetProxy"] = isAutoSetProxy
         json["isBypassApps"] = isBypassApps
         json["isAutoConnect"] = isAutoConnect
+        json["useGatewayAsHost"] = useGatewayAsHost
         return json.toJSONString()
     }
 
@@ -163,6 +176,7 @@ class Profile {
             isAutoSetProxy = json["isAutoSetProxy"] as? Boolean ?: false
             isBypassApps = json["isBypassApps"] as? Boolean ?: false
             isAutoConnect = json["isAutoConnect"] as? Boolean ?: false
+            useGatewayAsHost = json["useGatewayAsHost"] as? Boolean ?: false
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing profile JSON", e)
         }
@@ -187,6 +201,7 @@ class Profile {
         dst.isAutoSetProxy = isAutoSetProxy
         dst.isBypassApps = isBypassApps
         dst.isAutoConnect = isAutoConnect
+        dst.useGatewayAsHost = useGatewayAsHost
     }
 
     companion object {
@@ -194,50 +209,7 @@ class Profile {
 
         @JvmStatic
         fun validateAddr(addr: String?): String? {
-            if (addr.isNullOrEmpty()) return null
-            val trimmed = addr.trim()
-            if (trimmed.isEmpty()) return null
-
-            val parts = trimmed.split("/")
-            if (parts.size > 2) return null
-
-            val ipParts = parts[0].split(".")
-            if (ipParts.size != 4) return null
-            for (part in ipParts) {
-                val num = part.toIntOrNull() ?: return null
-                if (num < 0 || num > 255) return null
-            }
-
-            if (parts.size == 2) {
-                val mask = parts[1].toIntOrNull() ?: return null
-                if (mask < 0 || mask > 32) return null
-            }
-
-            return trimmed
-        }
-
-        @JvmStatic
-        fun encodeAddrs(addrs: Array<String>?): String {
-            if (addrs.isNullOrEmpty()) return ""
-            return buildString {
-                for (addr in addrs) {
-                    append(Base64.encodeToString(addr.toByteArray(), Base64.NO_WRAP))
-                    append('|')
-                }
-            }
-        }
-
-        @JvmStatic
-        fun decodeAddrs(encoded: String?): Array<String> {
-            if (encoded.isNullOrEmpty()) return emptyArray()
-            return encoded.split("|")
-                .filter { it.isNotEmpty() }
-                .mapNotNull { part ->
-                    runCatching { String(Base64.decode(part, Base64.NO_WRAP)) }
-                        .getOrNull()
-                        ?.takeIf { it.isNotEmpty() }
-                }
-                .toTypedArray()
+            return addr
         }
     }
 }
