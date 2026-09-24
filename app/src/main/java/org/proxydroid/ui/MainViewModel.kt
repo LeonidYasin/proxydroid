@@ -84,6 +84,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _state.value = _state.value.copy(advancedExpanded = !_state.value.advancedExpanded)
     }
 
+    fun toggleUseGatewayAsHost() {
+        updateProfile { useGatewayAsHost = !useGatewayAsHost }
+    }
+
     fun selectProfile(id: String) {
         if (id == _state.value.currentProfileId) return
         viewModelScope.launch(Dispatchers.IO) {
@@ -196,13 +200,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         } else {
             raw.split("|").map { it.trim() }.filter { it.isNotEmpty() }
         }
-        return ids.map { id ->
-            val storedName = settings.getString(id, null)?.let { json ->
-                runCatching {
-                    Profile().apply { decodeJson(json) }.name.takeIf { it.isNotBlank() }
-                }.getOrNull()
-            }
-            ProfileEntry(id, storedName ?: profileNameFor(id))
-        }
+        return ids.map { ProfileEntry(it, profileNameFor(it)) }
     }
 }
