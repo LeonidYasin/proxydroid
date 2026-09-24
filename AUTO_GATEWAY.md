@@ -14,8 +14,9 @@ Adds a `useGatewayAsHost` flag to `Profile`. When enabled, the VPN service resol
 
 - `app/src/main/java/org/proxydroid/android/utils/NetworkUtils.kt` - `getGatewayIp(context)` helper (works on API 24+).
 - `.github/workflows/build-auto-gateway.yml` - CI that builds a debug APK on every push/PR.
+- `AUTO_GATEWAY.md` - this file.
 
-## Follow-up changes still needed (in the same branch, applied as a second commit)
+## Follow-up changes still needed (in the same branch, second commit)
 
 1. `Profile.kt` - add `var useGatewayAsHost: Boolean = false`.
 2. `ProxyDroidVpnService.kt` - before building tun2socks args, compute:
