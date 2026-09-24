@@ -4,7 +4,7 @@ on:
   push:
     branches: [ master, main, 'claude/**', 'feature/**', 'test/**', 'refactor/**' ]
   pull_request:
-    branches: [ master, main, 'feature/**', 'refactor/**' ]
+    branches: [ master, main, 'feature/**', 'refactor/**', 'feat/**' ]
 
 jobs:
   build:
@@ -21,7 +21,25 @@ jobs:
         distribution: 'temurin'
 
     - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
+      run: |
+        # Use the Android SDK already pre-installed on ubuntu-latest,
+        # or install cmdline-tools if missing. Avoid android-actions/setup-android@v3,
+        # which breaks on ubuntu-24.04 runners.
+        if [ -z "$ANDROID_HOME" ]; then
+          echo "ANDROID_HOME is not set; installing cmdline-tools..."
+          mkdir -p "$HOME/android-sdk/cmdline-tools"
+          cd "$HOME/android-sdk/cmdline-tools"
+          curl -fsSL -o cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q cmdline-tools.zip
+          mv cmdline-tools latest 2>/dev/null || true
+          echo "ANDROID_HOME=$HOME/android-sdk" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> $GITHUB_ENV
+          echo "$HOME/android-sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
+        else
+          echo "Using pre-installed Android SDK at $ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
+        fi
+        echo "Android SDK setup complete."
 
     - name: Install NDK and CMake
       run: |
@@ -87,7 +105,19 @@ jobs:
         distribution: 'temurin'
 
     - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
+      run: |
+        if [ -z "$ANDROID_HOME" ]; then
+          mkdir -p "$HOME/android-sdk/cmdline-tools"
+          cd "$HOME/android-sdk/cmdline-tools"
+          curl -fsSL -o cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q cmdline-tools.zip
+          mv cmdline-tools latest 2>/dev/null || true
+          echo "ANDROID_HOME=$HOME/android-sdk" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> $GITHUB_ENV
+          echo "$HOME/android-sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
+        else
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
+        fi
 
     - name: Install NDK and CMake
       run: |
@@ -155,7 +185,19 @@ jobs:
         distribution: 'temurin'
 
     - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
+      run: |
+        if [ -z "$ANDROID_HOME" ]; then
+          mkdir -p "$HOME/android-sdk/cmdline-tools"
+          cd "$HOME/android-sdk/cmdline-tools"
+          curl -fsSL -o cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q cmdline-tools.zip
+          mv cmdline-tools latest 2>/dev/null || true
+          echo "ANDROID_HOME=$HOME/android-sdk" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> $GITHUB_ENV
+          echo "$HOME/android-sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
+        else
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
+        fi
 
     - name: Install NDK and CMake
       run: |
@@ -225,7 +267,19 @@ jobs:
         distribution: 'temurin'
 
     - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
+      run: |
+        if [ -z "$ANDROID_HOME" ]; then
+          mkdir -p "$HOME/android-sdk/cmdline-tools"
+          cd "$HOME/android-sdk/cmdline-tools"
+          curl -fsSL -o cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q cmdline-tools.zip
+          mv cmdline-tools latest 2>/dev/null || true
+          echo "ANDROID_HOME=$HOME/android-sdk" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> $GITHUB_ENV
+          echo "$HOME/android-sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
+        else
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
+        fi
 
     - name: Install NDK and CMake
       run: |
@@ -267,66 +321,16 @@ jobs:
         echo "sdk.dir=$ANDROID_HOME" > local.properties
         echo "ndk.dir=$ANDROID_NDK_HOME" >> local.properties
 
-    - name: Enable KVM
+    - name: Enable KVM group perms
       run: |
-        echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+        echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
         sudo udevadm control --reload-rules
         sudo udevadm trigger --name-match=kvm
 
-    - name: Build Debug APK
-      run: ./gradlew assembleDebug --stacktrace
-
-    - name: Start HTTP Proxy Server
-      run: |
-        chmod +x scripts/test_http_proxy.py
-        python3 scripts/test_http_proxy.py --port 8888 &
-        echo "PROXY_PID=$!" >> $GITHUB_ENV
-        sleep 2
-        echo "HTTP proxy started on port 8888"
-
-    - name: Create proxy preferences file
-      run: |
-        cat > /tmp/prefs.xml << 'EOF'
-        <?xml version="1.0" encoding="utf-8" standalone="yes" ?>
-        <map>
-            <string name="host">10.0.2.2</string>
-            <string name="port">8888</string>
-            <string name="proxyType">http</string>
-            <boolean name="isVpnMode" value="true" />
-            <boolean name="isAutoConnect" value="false" />
-            <boolean name="isAuth" value="false" />
-            <string name="user"></string>
-            <string name="password"></string>
-            <boolean name="isRunning" value="false" />
-            <boolean name="isBypassApps" value="false" />
-            <string name="bypassAddrs"></string>
-            <boolean name="isGlobalProxy" value="true" />
-        </map>
-        EOF
-
-    - name: Run Emulator Tests
+    - name: Run emulator instrumented test
       uses: reactivecircus/android-emulator-runner@v2
       with:
-        api-level: 29
+        api-level: 30
+        target: google_apis
         arch: x86_64
-        profile: Nexus 6
-        force-avd-creation: false
-        emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-        disable-animations: true
-        script: bash scripts/run_emulator_tests.sh
-
-    - name: Stop HTTP Proxy
-      if: always()
-      run: |
-        if [ -n "$PROXY_PID" ]; then
-          kill $PROXY_PID 2>/dev/null || true
-        fi
-
-    - name: Upload Test Logs
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: emulator-test-logs
-        path: |
-          app/build/outputs/
-        retention-days: 7
+        script: ./gradlew connectedAndroidTest --stacktrace
