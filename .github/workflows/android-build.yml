@@ -2,7 +2,7 @@ name: Android Build
 
 on:
   push:
-    branches: [ master, main, 'claude/**', 'feature/**', 'test/**', 'refactor/**' ]
+    branches: [ master, main, 'claude/**', 'feature/**', 'test/**', 'refactor/**', 'feat/**' ]
   pull_request:
     branches: [ master, main, 'feature/**', 'refactor/**', 'feat/**' ]
 
@@ -22,27 +22,40 @@ jobs:
 
     - name: Setup Android SDK
       run: |
-        # Use the Android SDK already pre-installed on ubuntu-latest,
-        # or install cmdline-tools if missing. Avoid android-actions/setup-android@v3,
-        # which breaks on ubuntu-24.04 runners.
-        if [ -z "$ANDROID_HOME" ]; then
-          echo "ANDROID_HOME is not set; installing cmdline-tools..."
+        # Use pre-installed Android SDK on ubuntu-latest; add cmdline-tools
+        # and platform-tools to PATH (they are NOT in PATH by default on
+        # ubuntu-24.04). Replaces android-actions/setup-android@v3, which
+        # is incompatible with ubuntu-24.04.
+        if [ -z "$ANDROID_HOME" ] && [ -z "$ANDROID_SDK_ROOT" ]; then
+          echo "No Android SDK found; installing cmdline-tools to $HOME/android-sdk"
           mkdir -p "$HOME/android-sdk/cmdline-tools"
           cd "$HOME/android-sdk/cmdline-tools"
           curl -fsSL -o cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
           unzip -q cmdline-tools.zip
           mv cmdline-tools latest 2>/dev/null || true
-          echo "ANDROID_HOME=$HOME/android-sdk" >> $GITHUB_ENV
-          echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> $GITHUB_ENV
-          echo "$HOME/android-sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
-        else
-          echo "Using pre-installed Android SDK at $ANDROID_HOME"
-          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
+          export ANDROID_HOME="$HOME/android-sdk"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
         fi
-        echo "Android SDK setup complete."
+        if [ -z "$ANDROID_HOME" ]; then
+          export ANDROID_HOME="${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+        fi
+        echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
+        # Add cmdline-tools/bin and platform-tools to PATH for subsequent steps.
+        if [ -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
+        elif [ -d "$ANDROID_HOME/cmdline-tools/bin" ]; then
+          echo "$ANDROID_HOME/cmdline-tools/bin" >> $GITHUB_PATH
+        fi
+        if [ -d "$ANDROID_HOME/platform-tools" ]; then
+          echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
+        fi
+        echo "Android SDK ready: ANDROID_HOME=$ANDROID_HOME"
+        ls -la "$ANDROID_HOME/cmdline-tools/latest/bin" || true
 
     - name: Install NDK and CMake
       run: |
+        yes | sdkmanager --licenses > /dev/null || true
         sdkmanager --install "ndk;25.1.8937393" "cmake;3.22.1"
         echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.1.8937393" >> $GITHUB_ENV
         echo "NDK_HOME=$ANDROID_HOME/ndk/25.1.8937393" >> $GITHUB_ENV
@@ -106,21 +119,32 @@ jobs:
 
     - name: Setup Android SDK
       run: |
-        if [ -z "$ANDROID_HOME" ]; then
+        if [ -z "$ANDROID_HOME" ] && [ -z "$ANDROID_SDK_ROOT" ]; then
           mkdir -p "$HOME/android-sdk/cmdline-tools"
           cd "$HOME/android-sdk/cmdline-tools"
           curl -fsSL -o cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
           unzip -q cmdline-tools.zip
           mv cmdline-tools latest 2>/dev/null || true
-          echo "ANDROID_HOME=$HOME/android-sdk" >> $GITHUB_ENV
-          echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> $GITHUB_ENV
-          echo "$HOME/android-sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
-        else
-          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
+          export ANDROID_HOME="$HOME/android-sdk"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+        fi
+        if [ -z "$ANDROID_HOME" ]; then
+          export ANDROID_HOME="${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+        fi
+        echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
+        if [ -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
+        elif [ -d "$ANDROID_HOME/cmdline-tools/bin" ]; then
+          echo "$ANDROID_HOME/cmdline-tools/bin" >> $GITHUB_PATH
+        fi
+        if [ -d "$ANDROID_HOME/platform-tools" ]; then
+          echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
         fi
 
     - name: Install NDK and CMake
       run: |
+        yes | sdkmanager --licenses > /dev/null || true
         sdkmanager --install "ndk;25.1.8937393" "cmake;3.22.1"
         echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.1.8937393" >> $GITHUB_ENV
         echo "NDK_HOME=$ANDROID_HOME/ndk/25.1.8937393" >> $GITHUB_ENV
@@ -186,21 +210,32 @@ jobs:
 
     - name: Setup Android SDK
       run: |
-        if [ -z "$ANDROID_HOME" ]; then
+        if [ -z "$ANDROID_HOME" ] && [ -z "$ANDROID_SDK_ROOT" ]; then
           mkdir -p "$HOME/android-sdk/cmdline-tools"
           cd "$HOME/android-sdk/cmdline-tools"
           curl -fsSL -o cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
           unzip -q cmdline-tools.zip
           mv cmdline-tools latest 2>/dev/null || true
-          echo "ANDROID_HOME=$HOME/android-sdk" >> $GITHUB_ENV
-          echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> $GITHUB_ENV
-          echo "$HOME/android-sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
-        else
-          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
+          export ANDROID_HOME="$HOME/android-sdk"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+        fi
+        if [ -z "$ANDROID_HOME" ]; then
+          export ANDROID_HOME="${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+        fi
+        echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
+        if [ -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
+        elif [ -d "$ANDROID_HOME/cmdline-tools/bin" ]; then
+          echo "$ANDROID_HOME/cmdline-tools/bin" >> $GITHUB_PATH
+        fi
+        if [ -d "$ANDROID_HOME/platform-tools" ]; then
+          echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
         fi
 
     - name: Install NDK and CMake
       run: |
+        yes | sdkmanager --licenses > /dev/null || true
         sdkmanager --install "ndk;25.1.8937393" "cmake;3.22.1"
         echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.1.8937393" >> $GITHUB_ENV
         echo "NDK_HOME=$ANDROID_HOME/ndk/25.1.8937393" >> $GITHUB_ENV
@@ -268,21 +303,32 @@ jobs:
 
     - name: Setup Android SDK
       run: |
-        if [ -z "$ANDROID_HOME" ]; then
+        if [ -z "$ANDROID_HOME" ] && [ -z "$ANDROID_SDK_ROOT" ]; then
           mkdir -p "$HOME/android-sdk/cmdline-tools"
           cd "$HOME/android-sdk/cmdline-tools"
           curl -fsSL -o cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
           unzip -q cmdline-tools.zip
           mv cmdline-tools latest 2>/dev/null || true
-          echo "ANDROID_HOME=$HOME/android-sdk" >> $GITHUB_ENV
-          echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> $GITHUB_ENV
-          echo "$HOME/android-sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
-        else
-          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
+          export ANDROID_HOME="$HOME/android-sdk"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+        fi
+        if [ -z "$ANDROID_HOME" ]; then
+          export ANDROID_HOME="${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+        fi
+        echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
+        if [ -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
+        elif [ -d "$ANDROID_HOME/cmdline-tools/bin" ]; then
+          echo "$ANDROID_HOME/cmdline-tools/bin" >> $GITHUB_PATH
+        fi
+        if [ -d "$ANDROID_HOME/platform-tools" ]; then
+          echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
         fi
 
     - name: Install NDK and CMake
       run: |
+        yes | sdkmanager --licenses > /dev/null || true
         sdkmanager --install "ndk;25.1.8937393" "cmake;3.22.1"
         echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.1.8937393" >> $GITHUB_ENV
         echo "NDK_HOME=$ANDROID_HOME/ndk/25.1.8937393" >> $GITHUB_ENV
