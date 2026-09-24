@@ -178,30 +178,32 @@ class Profile {
             isAutoConnect = json["isAutoConnect"] as? Boolean ?: false
             useGatewayAsHost = json["useGatewayAsHost"] as? Boolean ?: false
         } catch (e: Exception) {
-            Log.e(TAG, "Error parsing profile JSON", e)
+            Log.e(TAG, "decodeJson failed", e)
         }
     }
 
-    fun copy(): Profile = Profile().also { dst ->
-        dst.name = name
-        dst.host = host
-        dst.port = port
-        dst.user = user
-        dst.password = password
-        dst.domain = domain
-        dst.proxyType = proxyType
-        dst.ssid = ssid
-        dst.excludedSsid = excludedSsid
-        dst.proxyApps = proxyApps
-        dst.bypassAddrs = bypassAddrs
-        dst.isAuth = isAuth
-        dst.isNTLM = isNTLM
-        dst.isDNSProxy = isDNSProxy
-        dst.isPAC = isPAC
-        dst.isAutoSetProxy = isAutoSetProxy
-        dst.isBypassApps = isBypassApps
-        dst.isAutoConnect = isAutoConnect
-        dst.useGatewayAsHost = useGatewayAsHost
+    fun encodeJson(): String = Base64.encode(toString())
+
+    fun copyFrom(src: Profile) {
+        name = src.name
+        host = src.host
+        port = src.port
+        user = src.user
+        password = src.password
+        domain = src.domain
+        proxyType = src.proxyType
+        ssid = src.ssid
+        excludedSsid = src.excludedSsid
+        proxyApps = src.proxyApps
+        bypassAddrs = src.bypassAddrs
+        isAuth = src.isAuth
+        isNTLM = src.isNTLM
+        isDNSProxy = src.isDNSProxy
+        isPAC = src.isPAC
+        isAutoSetProxy = src.isAutoSetProxy
+        isBypassApps = src.isBypassApps
+        isAutoConnect = src.isAutoConnect
+        useGatewayAsHost = src.useGatewayAsHost
     }
 
     companion object {
@@ -210,6 +212,26 @@ class Profile {
         @JvmStatic
         fun validateAddr(addr: String?): String? {
             return addr
+        }
+
+        /**
+         * Разбирает строку bypass-адресов (SharedPreferences / JSON) в список
+         * непустых записей. Формат хранения — записи, разделённые '\n'.
+         */
+        @JvmStatic
+        fun decodeAddrs(raw: String?): List<String> {
+            if (raw.isNullOrEmpty()) return emptyList()
+            return raw.split('\n').map { it.trim() }.filter { it.isNotEmpty() }
+        }
+
+        /**
+         * Собирает список bypass-адресов в строку для хранения
+         * (разделитель '\n'). Пустые/пробельные записи отбрасываются.
+         */
+        @JvmStatic
+        fun encodeAddrs(addrs: Array<String>?): String {
+            if (addrs == null || addrs.isEmpty()) return ""
+            return addrs.map { it.trim() }.filter { it.isNotEmpty() }.joinToString("\n")
         }
     }
 }
