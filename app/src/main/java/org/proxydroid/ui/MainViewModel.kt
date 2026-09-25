@@ -72,7 +72,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun updateProfile(transform: Profile.() -> Unit) {
-        val next = _state.value.profile.copy().apply(transform)
+        val next = Profile().also { it.copyFrom(_state.value.profile) }.apply(transform)
         _state.value = _state.value.copy(profile = next)
         viewModelScope.launch(Dispatchers.IO) {
             next.setProfile(settings)
@@ -186,20 +186,3 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun profileNameFor(id: String): String =
         settings.getString("profile$id", null) ?: "Profile $id"
-
-    private fun loadProfileList(): List<ProfileEntry> {
-        val raw = settings.getString("profileValues", null)
-        val ids = if (raw.isNullOrEmpty()) {
-            // Bootstrap a single default profile.
-            listOf("1").also {
-                settings.edit()
-                    .putString("profileValues", "1|")
-                    .putString("profileEntries", profileNameFor("1") + "|")
-                    .apply()
-            }
-        } else {
-            raw.split("|").map { it.trim() }.filter { it.isNotEmpty() }
-        }
-        return ids.map { ProfileEntry(it, profileNameFor(it)) }
-    }
-}
