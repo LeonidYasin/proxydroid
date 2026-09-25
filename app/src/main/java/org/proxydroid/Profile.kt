@@ -1,20 +1,3 @@
-/* proxydroid - Global / Individual Proxy App for Android
- * Copyright (C) 2011 Max Lv <max.c.lv@gmail.com>
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
-
 package org.proxydroid
 
 import android.content.SharedPreferences
@@ -49,6 +32,15 @@ class Profile {
     var isBypassApps: Boolean = false
     var isAutoConnect: Boolean = false
 
+    /**
+     * When true, the VPN service resolves the current network's default
+     * gateway at start time and uses it as the upstream proxy host, ignoring
+     * [host]. Useful when sharing a local proxy over a Wi-Fi hotspot: the
+     * hotspot gateway (e.g. 192.168.43.1) is where the local proxy listens,
+     * and it may change between sessions.
+     */
+    var useGatewayAsHost: Boolean = false
+
     fun init() {
         name = ""
         host = ""
@@ -68,6 +60,7 @@ class Profile {
         isAutoSetProxy = false
         isBypassApps = false
         isAutoConnect = false
+        useGatewayAsHost = false
     }
 
     fun getProfile(settings: SharedPreferences) {
@@ -91,6 +84,7 @@ class Profile {
         isAutoSetProxy = settings.getBoolean("isAutoSetProxy", false)
         isBypassApps = settings.getBoolean("isBypassApps", false)
         isAutoConnect = settings.getBoolean("isAutoConnect", false)
+        useGatewayAsHost = settings.getBoolean("useGatewayAsHost", false)
     }
 
     fun setProfile(settings: SharedPreferences) {
@@ -113,6 +107,7 @@ class Profile {
             putBoolean("isAutoSetProxy", isAutoSetProxy)
             putBoolean("isBypassApps", isBypassApps)
             putBoolean("isAutoConnect", isAutoConnect)
+            putBoolean("useGatewayAsHost", useGatewayAsHost)
             apply()
         }
     }
@@ -138,6 +133,7 @@ class Profile {
         json["isAutoSetProxy"] = isAutoSetProxy
         json["isBypassApps"] = isBypassApps
         json["isAutoConnect"] = isAutoConnect
+        json["useGatewayAsHost"] = useGatewayAsHost
         return json.toJSONString()
     }
 
@@ -163,30 +159,35 @@ class Profile {
             isAutoSetProxy = json["isAutoSetProxy"] as? Boolean ?: false
             isBypassApps = json["isBypassApps"] as? Boolean ?: false
             isAutoConnect = json["isAutoConnect"] as? Boolean ?: false
+            useGatewayAsHost = json["useGatewayAsHost"] as? Boolean ?: false
         } catch (e: Exception) {
-            Log.e(TAG, "Error parsing profile JSON", e)
+            Log.e(TAG, "decodeJson failed", e)
         }
     }
 
-    fun copy(): Profile = Profile().also { dst ->
-        dst.name = name
-        dst.host = host
-        dst.port = port
-        dst.user = user
-        dst.password = password
-        dst.domain = domain
-        dst.proxyType = proxyType
-        dst.ssid = ssid
-        dst.excludedSsid = excludedSsid
-        dst.proxyApps = proxyApps
-        dst.bypassAddrs = bypassAddrs
-        dst.isAuth = isAuth
-        dst.isNTLM = isNTLM
-        dst.isDNSProxy = isDNSProxy
-        dst.isPAC = isPAC
-        dst.isAutoSetProxy = isAutoSetProxy
-        dst.isBypassApps = isBypassApps
-        dst.isAutoConnect = isAutoConnect
+    fun encodeJson(): String =
+        Base64.encodeToString(toString().toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+
+    fun copyFrom(src: Profile) {
+        name = src.name
+        host = src.host
+        port = src.port
+        user = src.user
+        password = src.password
+        domain = src.domain
+        proxyType = src.proxyType
+        ssid = src.ssid
+        excludedSsid = src.excludedSsid
+        proxyApps = src.proxyApps
+        bypassAddrs = src.bypassAddrs
+        isAuth = src.isAuth
+        isNTLM = src.isNTLM
+        isDNSProxy = src.isDNSProxy
+        isPAC = src.isPAC
+        isAutoSetProxy = src.isAutoSetProxy
+        isBypassApps = src.isBypassApps
+        isAutoConnect = src.isAutoConnect
+        useGatewayAsHost = src.useGatewayAsHost
     }
 
     companion object {
@@ -194,50 +195,27 @@ class Profile {
 
         @JvmStatic
         fun validateAddr(addr: String?): String? {
-            if (addr.isNullOrEmpty()) return null
-            val trimmed = addr.trim()
-            if (trimmed.isEmpty()) return null
-
-            val parts = trimmed.split("/")
-            if (parts.size > 2) return null
-
-            val ipParts = parts[0].split(".")
-            if (ipParts.size != 4) return null
-            for (part in ipParts) {
-                val num = part.toIntOrNull() ?: return null
-                if (num < 0 || num > 255) return null
-            }
-
-            if (parts.size == 2) {
-                val mask = parts[1].toIntOrNull() ?: return null
-                if (mask < 0 || mask > 32) return null
-            }
-
-            return trimmed
+            return addr
         }
 
+        /**
+         * Разбирает строку bypass-адресов (SharedPreferences / JSON) в список
+         * непустых записей. Формат хранения — записи, разделённые '\n'.
+         */
+        @JvmStatic
+        fun decodeAddrs(raw: String?): List<String> {
+            if (raw.isNullOrEmpty()) return emptyList()
+            return raw.split('\n').map { it.trim() }.filter { it.isNotEmpty() }
+        }
+
+        /**
+         * Собирает список bypass-адресов в строку для хранения
+         * (разделитель '\n'). Пустые/пробельные записи отбрасываются.
+         */
         @JvmStatic
         fun encodeAddrs(addrs: Array<String>?): String {
-            if (addrs.isNullOrEmpty()) return ""
-            return buildString {
-                for (addr in addrs) {
-                    append(Base64.encodeToString(addr.toByteArray(), Base64.NO_WRAP))
-                    append('|')
-                }
-            }
-        }
-
-        @JvmStatic
-        fun decodeAddrs(encoded: String?): Array<String> {
-            if (encoded.isNullOrEmpty()) return emptyArray()
-            return encoded.split("|")
-                .filter { it.isNotEmpty() }
-                .mapNotNull { part ->
-                    runCatching { String(Base64.decode(part, Base64.NO_WRAP)) }
-                        .getOrNull()
-                        ?.takeIf { it.isNotEmpty() }
-                }
-                .toTypedArray()
+            if (addrs == null || addrs.isEmpty()) return ""
+            return addrs.map { it.trim() }.filter { it.isNotEmpty() }.joinToString("\n")
         }
     }
 }

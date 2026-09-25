@@ -2,9 +2,9 @@ name: Android Build
 
 on:
   push:
-    branches: [ master, main, 'claude/**', 'feature/**', 'test/**', 'refactor/**' ]
+    branches: [ master, main, 'claude/**', 'feature/**', 'test/**', 'refactor/**', 'feat/**' ]
   pull_request:
-    branches: [ master, main, 'feature/**', 'refactor/**' ]
+    branches: [ master, main, 'feature/**', 'refactor/**', 'feat/**' ]
 
 jobs:
   build:
@@ -21,10 +21,41 @@ jobs:
         distribution: 'temurin'
 
     - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
+      run: |
+        # Use pre-installed Android SDK on ubuntu-latest; add cmdline-tools
+        # and platform-tools to PATH (they are NOT in PATH by default on
+        # ubuntu-24.04). Replaces android-actions/setup-android@v3, which
+        # is incompatible with ubuntu-24.04.
+        if [ -z "$ANDROID_HOME" ] && [ -z "$ANDROID_SDK_ROOT" ]; then
+          echo "No Android SDK found; installing cmdline-tools to $HOME/android-sdk"
+          mkdir -p "$HOME/android-sdk/cmdline-tools"
+          cd "$HOME/android-sdk/cmdline-tools"
+          curl -fsSL -o cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q cmdline-tools.zip
+          mv cmdline-tools latest 2>/dev/null || true
+          export ANDROID_HOME="$HOME/android-sdk"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+        fi
+        if [ -z "$ANDROID_HOME" ]; then
+          export ANDROID_HOME="${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+        fi
+        echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
+        # Add cmdline-tools/bin and platform-tools to PATH for subsequent steps.
+        if [ -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
+        elif [ -d "$ANDROID_HOME/cmdline-tools/bin" ]; then
+          echo "$ANDROID_HOME/cmdline-tools/bin" >> $GITHUB_PATH
+        fi
+        if [ -d "$ANDROID_HOME/platform-tools" ]; then
+          echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
+        fi
+        echo "Android SDK ready: ANDROID_HOME=$ANDROID_HOME"
+        ls -la "$ANDROID_HOME/cmdline-tools/latest/bin" || true
 
     - name: Install NDK and CMake
       run: |
+        yes | sdkmanager --licenses > /dev/null || true
         sdkmanager --install "ndk;25.1.8937393" "cmake;3.22.1"
         echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.1.8937393" >> $GITHUB_ENV
         echo "NDK_HOME=$ANDROID_HOME/ndk/25.1.8937393" >> $GITHUB_ENV
@@ -87,10 +118,33 @@ jobs:
         distribution: 'temurin'
 
     - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
+      run: |
+        if [ -z "$ANDROID_HOME" ] && [ -z "$ANDROID_SDK_ROOT" ]; then
+          mkdir -p "$HOME/android-sdk/cmdline-tools"
+          cd "$HOME/android-sdk/cmdline-tools"
+          curl -fsSL -o cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q cmdline-tools.zip
+          mv cmdline-tools latest 2>/dev/null || true
+          export ANDROID_HOME="$HOME/android-sdk"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+        fi
+        if [ -z "$ANDROID_HOME" ]; then
+          export ANDROID_HOME="${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+        fi
+        echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
+        if [ -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
+        elif [ -d "$ANDROID_HOME/cmdline-tools/bin" ]; then
+          echo "$ANDROID_HOME/cmdline-tools/bin" >> $GITHUB_PATH
+        fi
+        if [ -d "$ANDROID_HOME/platform-tools" ]; then
+          echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
+        fi
 
     - name: Install NDK and CMake
       run: |
+        yes | sdkmanager --licenses > /dev/null || true
         sdkmanager --install "ndk;25.1.8937393" "cmake;3.22.1"
         echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.1.8937393" >> $GITHUB_ENV
         echo "NDK_HOME=$ANDROID_HOME/ndk/25.1.8937393" >> $GITHUB_ENV
@@ -155,10 +209,33 @@ jobs:
         distribution: 'temurin'
 
     - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
+      run: |
+        if [ -z "$ANDROID_HOME" ] && [ -z "$ANDROID_SDK_ROOT" ]; then
+          mkdir -p "$HOME/android-sdk/cmdline-tools"
+          cd "$HOME/android-sdk/cmdline-tools"
+          curl -fsSL -o cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q cmdline-tools.zip
+          mv cmdline-tools latest 2>/dev/null || true
+          export ANDROID_HOME="$HOME/android-sdk"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+        fi
+        if [ -z "$ANDROID_HOME" ]; then
+          export ANDROID_HOME="${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+        fi
+        echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
+        if [ -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
+        elif [ -d "$ANDROID_HOME/cmdline-tools/bin" ]; then
+          echo "$ANDROID_HOME/cmdline-tools/bin" >> $GITHUB_PATH
+        fi
+        if [ -d "$ANDROID_HOME/platform-tools" ]; then
+          echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
+        fi
 
     - name: Install NDK and CMake
       run: |
+        yes | sdkmanager --licenses > /dev/null || true
         sdkmanager --install "ndk;25.1.8937393" "cmake;3.22.1"
         echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.1.8937393" >> $GITHUB_ENV
         echo "NDK_HOME=$ANDROID_HOME/ndk/25.1.8937393" >> $GITHUB_ENV
@@ -225,10 +302,33 @@ jobs:
         distribution: 'temurin'
 
     - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
+      run: |
+        if [ -z "$ANDROID_HOME" ] && [ -z "$ANDROID_SDK_ROOT" ]; then
+          mkdir -p "$HOME/android-sdk/cmdline-tools"
+          cd "$HOME/android-sdk/cmdline-tools"
+          curl -fsSL -o cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q cmdline-tools.zip
+          mv cmdline-tools latest 2>/dev/null || true
+          export ANDROID_HOME="$HOME/android-sdk"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+        fi
+        if [ -z "$ANDROID_HOME" ]; then
+          export ANDROID_HOME="${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+        fi
+        echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
+        if [ -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
+        elif [ -d "$ANDROID_HOME/cmdline-tools/bin" ]; then
+          echo "$ANDROID_HOME/cmdline-tools/bin" >> $GITHUB_PATH
+        fi
+        if [ -d "$ANDROID_HOME/platform-tools" ]; then
+          echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
+        fi
 
     - name: Install NDK and CMake
       run: |
+        yes | sdkmanager --licenses > /dev/null || true
         sdkmanager --install "ndk;25.1.8937393" "cmake;3.22.1"
         echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.1.8937393" >> $GITHUB_ENV
         echo "NDK_HOME=$ANDROID_HOME/ndk/25.1.8937393" >> $GITHUB_ENV
@@ -267,66 +367,16 @@ jobs:
         echo "sdk.dir=$ANDROID_HOME" > local.properties
         echo "ndk.dir=$ANDROID_NDK_HOME" >> local.properties
 
-    - name: Enable KVM
+    - name: Enable KVM group perms
       run: |
-        echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+        echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
         sudo udevadm control --reload-rules
         sudo udevadm trigger --name-match=kvm
 
-    - name: Build Debug APK
-      run: ./gradlew assembleDebug --stacktrace
-
-    - name: Start HTTP Proxy Server
-      run: |
-        chmod +x scripts/test_http_proxy.py
-        python3 scripts/test_http_proxy.py --port 8888 &
-        echo "PROXY_PID=$!" >> $GITHUB_ENV
-        sleep 2
-        echo "HTTP proxy started on port 8888"
-
-    - name: Create proxy preferences file
-      run: |
-        cat > /tmp/prefs.xml << 'EOF'
-        <?xml version="1.0" encoding="utf-8" standalone="yes" ?>
-        <map>
-            <string name="host">10.0.2.2</string>
-            <string name="port">8888</string>
-            <string name="proxyType">http</string>
-            <boolean name="isVpnMode" value="true" />
-            <boolean name="isAutoConnect" value="false" />
-            <boolean name="isAuth" value="false" />
-            <string name="user"></string>
-            <string name="password"></string>
-            <boolean name="isRunning" value="false" />
-            <boolean name="isBypassApps" value="false" />
-            <string name="bypassAddrs"></string>
-            <boolean name="isGlobalProxy" value="true" />
-        </map>
-        EOF
-
-    - name: Run Emulator Tests
+    - name: Run emulator instrumented test
       uses: reactivecircus/android-emulator-runner@v2
       with:
-        api-level: 29
+        api-level: 30
+        target: google_apis
         arch: x86_64
-        profile: Nexus 6
-        force-avd-creation: false
-        emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-        disable-animations: true
-        script: bash scripts/run_emulator_tests.sh
-
-    - name: Stop HTTP Proxy
-      if: always()
-      run: |
-        if [ -n "$PROXY_PID" ]; then
-          kill $PROXY_PID 2>/dev/null || true
-        fi
-
-    - name: Upload Test Logs
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: emulator-test-logs
-        path: |
-          app/build/outputs/
-        retention-days: 7
+        script: ./gradlew connectedAndroidTest --stacktrace

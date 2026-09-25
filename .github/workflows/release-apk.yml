@@ -1,0 +1,131 @@
+name: Release APK
+
+# Автовыкладка debug APK в GitHub Release.
+# Триггер: push тега v* (напр. v0.1.0-demo) или ручной запуск.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Тег релиза (напр. v0.1.0-demo). Пусто — только собрать APK.'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Setup Android SDK
+      run: |
+        if [ -z "$ANDROID_HOME" ] && [ -z "$ANDROID_SDK_ROOT" ]; then
+          mkdir -p "$HOME/android-sdk/cmdline-tools"
+          cd "$HOME/android-sdk/cmdline-tools"
+          curl -fsSL -o cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q cmdline-tools.zip
+          mv cmdline-tools latest 2>/dev/null || true
+          export ANDROID_HOME="$HOME/android-sdk"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+        fi
+        if [ -z "$ANDROID_HOME" ]; then
+          export ANDROID_HOME="${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+        fi
+        echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
+        if [ -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
+        elif [ -d "$ANDROID_HOME/cmdline-tools/bin" ]; then
+          echo "$ANDROID_HOME/cmdline-tools/bin" >> $GITHUB_PATH
+        fi
+        if [ -d "$ANDROID_HOME/platform-tools" ]; then
+          echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
+        fi
+
+    - name: Install NDK and CMake
+      run: |
+        yes | sdkmanager --licenses > /dev/null || true
+        sdkmanager --install "ndk;25.1.8937393" "cmake;3.22.1"
+        echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.1.8937393" >> $GITHUB_ENV
+        echo "NDK_HOME=$ANDROID_HOME/ndk/25.1.8937393" >> $GITHUB_ENV
+
+    - name: Setup Rust toolchain (Android targets for proxydroid-tun2socks)
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+
+    - name: Cache cargo
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          app/src/main/rust/proxydroid-tun2socks/target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
+
+    - name: Cache Gradle packages
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', 'gradle/libs.versions.toml') }}
+        restore-keys: |
+          ${{ runner.os }}-gradle-
+
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
+
+    - name: Create local.properties
+      run: |
+        echo "sdk.dir=$ANDROID_HOME" > local.properties
+        echo "ndk.dir=$ANDROID_NDK_HOME" >> local.properties
+
+    - name: Build Debug APK
+      run: ./gradlew assembleDebug --stacktrace
+
+    - name: Upload Debug APK (artifact)
+      uses: actions/upload-artifact@v4
+      with:
+        name: app-debug-release
+        path: app/build/outputs/apk/debug/app-debug.apk
+        retention-days: 30
+
+    - name: Determine release tag
+      id: tag
+      run: |
+        if [ "${{ github.event_name }}" = "push" ]; then
+          echo "tag=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+        else
+          echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Publish APK to GitHub Release
+      if: steps.tag.outputs.tag != ''
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        TAG="${{ steps.tag.outputs.tag }}"
+        if ! gh release view "$TAG" >/dev/null 2>&1; then
+          gh release create "$TAG" \
+            --title "proxydroid $TAG" \
+            --notes "Авто-релиз APK из commit ${GITHUB_SHA}." \
+            --prerelease
+        fi
+        gh release upload "$TAG" \
+          app/build/outputs/apk/debug/app-debug.apk#app-debug.apk \
+          --clobber
