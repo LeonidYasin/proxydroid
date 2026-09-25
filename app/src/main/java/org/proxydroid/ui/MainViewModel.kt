@@ -186,3 +186,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun profileNameFor(id: String): String =
         settings.getString("profile$id", null) ?: "Profile $id"
+
+    private fun loadProfileList(): List<ProfileEntry> {
+        val raw = settings.getString("profileValues", null)
+        val ids = if (raw.isNullOrEmpty()) {
+            // Bootstrap a single default profile.
+            listOf("1").also {
+                settings.edit().putString("profileValues", "1|").apply()
+                settings.edit().putString("profileEntries", "Profile 1|").apply()
+            }
+        } else {
+            raw.split("|").mapNotNull { it.trim().takeIf { s -> s.isNotEmpty() } }
+        }
+        return ids.map { ProfileEntry(it, profileNameFor(it)) }
+    }
+}
