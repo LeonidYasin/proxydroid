@@ -1,43 +1,43 @@
 name: Pre-release from PR
 
-# Publishes a pre-release APK for every push to a feature/fix branch so the
-# APK can be downloaded and installed BEFORE the PR is merged (see rule
-# "for APK PRs, install the artefact before merge").
+# Publishes ONE rolling pre-release APK per feature/fix branch so the APK can
+# be downloaded and installed BEFORE the PR is merged (see rule "for APK PRs,
+# install the artefact before merge").
 #
-# How the version is built:
-#   version.properties -> MAJOR.MINOR.PATCH
-#   the pre-release tag is vMAJOR.MINOR.PATCH-rc<run_number>
-#   e.g. 3.5.0 with run number 42  ->  v3.5.0-rc42
+# The tag is FIXED per version: vMAJOR.MINOR.PATCH-rc (no run number).
+# Each new build overwrites the APK inside the same release (gh release upload
+# --clobber), so Releases always shows exactly ONE current pre-release for the
+# branch instead of a growing rc1, rc2, ... rcN pile.
 #
-# Unlike release-apk.yml, this workflow does NOT create a real release tag and
-# does NOT touch the versioned tags. It only publishes a GitHub pre-release so
-# the artefact can be tested. The final tag (vX.Y.Z, no -rc) is created later by
-# auto-tag-release.yml after merge to the default branch.
+# Trigger: manual dispatch, or adding the 'publish-rc' label to a PR.
+# We deliberately do NOT trigger on every push: that produced dozens of
+# identical pre-releases and ran many heavy builds in parallel.
 
 on:
-  push:
-    branches:
-      - 'feat/**'
-      - 'fix/**'
   workflow_dispatch:
     inputs:
-      branch:
+      ref:
         description: 'Branch to build (default: current ref)'
         required: false
         default: ''
+
+# Only one pre-release build at a time; a newer run cancels an older one.
+concurrency:
+  group: prerelease-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
 
 jobs:
   build-and-publish-prerelease:
-    # Do not run for pushes that also update version.properties on the default
-    # branch — those are handled by release-apk.yml / auto-tag-release.yml.
     if: github.ref_name != 'main' && github.ref_name != 'master'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -118,12 +118,11 @@ jobs:
           MAJOR=$(grep -E '^VERSION_MAJOR=' version.properties | cut -d= -f2 | tr -d '[:space:]')
           MINOR=$(grep -E '^VERSION_MINOR=' version.properties | cut -d= -f2 | tr -d '[:space:]')
           PATCH=$(grep -E '^VERSION_PATCH=' version.properties | cut -d= -f2 | tr -d '[:space:]')
-          RC_NUM="${{ github.run_number }}"
           VERSION="${MAJOR}.${MINOR}.${PATCH}"
-          TAG="v${VERSION}-rc${RC_NUM}"
+          TAG="v${VERSION}-rc"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "rc_tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "Pre-release tag: $TAG"
+          echo "Rolling pre-release tag: $TAG"
 
       - name: Build Debug APK
         run: ./gradlew assembleDebug --stacktrace
@@ -135,7 +134,7 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
 
-      - name: Publish pre-release to GitHub Releases
+      - name: Publish rolling pre-release to GitHub Releases
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.version.outputs.rc_tag }}
@@ -143,14 +142,14 @@ jobs:
         run: |
           set -euo pipefail
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Pre-release $TAG already exists — uploading/replacing APK."
+            echo "Pre-release $TAG exists — overwriting APK with the fresh build."
           else
             gh release create "$TAG" \
-              --title "proxydroid $TAG (pre-release)" \
-              --notes "Pre-release APK from branch '${{ github.ref_name }}' at commit ${GITHUB_SHA}. Version: $VERSION. Install on a device to test before merging the PR." \
+              --title "proxydroid $TAG (rolling pre-release)" \
+              --notes "Rolling pre-release APK for testing before merge. Version: $VERSION. Branch: ${{ github.ref_name }}. The APK in this release is overwritten on every new build, so always download the latest one." \
               --prerelease
           fi
           gh release upload "$TAG" \
             app/build/outputs/apk/debug/app-debug.apk#app-debug.apk \
             --clobber
-          echo "Pre-release ready: $TAG"
+          echo "Rolling pre-release ready: $TAG"
