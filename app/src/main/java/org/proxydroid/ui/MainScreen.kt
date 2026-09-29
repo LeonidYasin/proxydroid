@@ -176,7 +176,11 @@ fun MainScreen(
 }
 
 @Composable
-private fun ConnectionCard(state: MainUiState, onToggle: (Boolean) -> Unit) {
+private fun ConnectionCard(
+    state: MainUiState,
+    onToggle: (Boolean) -> Unit,
+    onCheckAlive: () -> Unit,
+) {
     val on = state.isWorking
     val tone = if (on) MaterialTheme.colorScheme.primaryContainer
     else MaterialTheme.colorScheme.surfaceVariant
@@ -212,6 +216,11 @@ private fun ConnectionCard(state: MainUiState, onToggle: (Boolean) -> Unit) {
                     secondaryStatus(state),
                     style = MaterialTheme.typography.bodyMedium,
                 )
+                // Liveness indicator: only meaningful while the tunnel is up.
+                if (on) {
+                    Spacer(Modifier.height(4.dp))
+                    LivenessIndicator(state = state, onCheckAlive = onCheckAlive)
+                }
             }
             if (state.isConnecting) {
                 CircularProgressIndicator(
@@ -224,6 +233,43 @@ private fun ConnectionCard(state: MainUiState, onToggle: (Boolean) -> Unit) {
                     onCheckedChange = onToggle,
                 )
             }
+        }
+    }
+}
+
+/**
+ * Small dot + label showing the result of the last liveness probe of the
+ * upstream proxy. Tapping the label re-runs the probe.
+ *
+ * Colors:
+ *   green  -> isAlive == true  (proxy port responded)
+ *   red    -> isAlive == false (probe failed)
+ *   gray   -> isAlive == null  (probe has not run yet)
+ */
+@Composable
+private fun LivenessIndicator(state: MainUiState, onCheckAlive: () -> Unit) {
+    val (dotColor, label) = when (state.isAlive) {
+        true -> Color(0xFF2BAA63) to "Proxy alive"
+        false -> Color(0xFFE53935) to "Proxy not responding"
+        null -> Color(0xFF9E9E9E) to "Proxy not checked yet"
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .background(dotColor, CircleShape),
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Spacer(Modifier.width(8.dp))
+        TextButton(
+            onClick = onCheckAlive,
+            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+        ) {
+            Text("Check", style = MaterialTheme.typography.bodySmall)
         }
     }
 }
