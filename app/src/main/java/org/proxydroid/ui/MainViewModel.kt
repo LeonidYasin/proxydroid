@@ -128,6 +128,27 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Starts a periodic liveness probe (every 15 seconds) while the tunnel
+     * is active. Idempotent: calling it while the loop is already running
+     * is a no-op.
+     */
+    private fun startAlivePolling() {
+        if (pollingJob?.isActive == true) return
+        pollingJob = viewModelScope.launch {
+            while (isActive) {
+                checkAlive()
+                delay(ALIVE_POLL_INTERVAL_MS)
+            }
+        }
+    }
+
+    /** Stops the periodic liveness probe (when the tunnel goes down). */
+    private fun stopAlivePolling() {
+        pollingJob?.cancel()
+        pollingJob = null
+    }
+
     fun selectProfile(id: String) {
         if (id == _state.value.currentProfileId) return
         viewModelScope.launch(Dispatchers.IO) {
