@@ -100,6 +100,25 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         updateProfile { autoStartOnBoot = !autoStartOnBoot }
     }
 
+    /**
+     * Runs a quick TCP liveness probe against the current profile's
+     * upstream proxy and publishes the result into [MainUiState.isAlive].
+     *
+     * The probe runs on Dispatchers.IO and never throws: any failure is
+     * reported as isAlive = false.
+     */
+    fun checkAlive() {
+        val profile = _state.value.profile
+        val host = profile.host
+        val port = profile.port
+        viewModelScope.launch {
+            val alive = withContext(Dispatchers.IO) {
+                NetworkUtils.isProxyAlive(host, port)
+            }
+            _state.value = _state.value.copy(isAlive = alive)
+        }
+    }
+
     fun selectProfile(id: String) {
         if (id == _state.value.currentProfileId) return
         viewModelScope.launch(Dispatchers.IO) {
