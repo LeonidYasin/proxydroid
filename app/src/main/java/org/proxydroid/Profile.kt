@@ -93,6 +93,7 @@ class Profile {
         isBypassApps = settings.getBoolean("isBypassApps", false)
         isAutoConnect = settings.getBoolean("isAutoConnect", false)
         useGatewayAsHost = settings.getBoolean("useGatewayAsHost", false)
+        autoStartOnBoot = settings.getBoolean("autoStartOnBoot", false)
     }
 
     fun setProfile(settings: SharedPreferences) {
