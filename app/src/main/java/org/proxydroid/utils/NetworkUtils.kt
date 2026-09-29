@@ -10,6 +10,8 @@ package org.proxydroid.utils
 
 import android.content.Context
 import android.net.ConnectivityManager
+import java.net.InetSocketAddress
+import java.net.Socket
 
 /**
  * Returns the IP address of the current network's default gateway.
