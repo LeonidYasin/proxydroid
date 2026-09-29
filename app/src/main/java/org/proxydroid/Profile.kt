@@ -144,6 +144,7 @@ class Profile {
         json["isBypassApps"] = isBypassApps
         json["isAutoConnect"] = isAutoConnect
         json["useGatewayAsHost"] = useGatewayAsHost
+        json["autoStartOnBoot"] = autoStartOnBoot
         return json.toJSONString()
     }
 
