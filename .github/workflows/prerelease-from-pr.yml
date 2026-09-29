@@ -37,7 +37,10 @@ permissions:
 
 jobs:
   build-and-publish-prerelease:
-    if: github.ref_name != 'main' && github.ref_name != 'master'
+    # Run on manual dispatch, OR when the added PR label is exactly 'publish-rc'.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.event.label.name == 'publish-rc')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
