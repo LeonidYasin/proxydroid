@@ -88,6 +88,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         updateProfile { useGatewayAsHost = !useGatewayAsHost }
     }
 
+    fun toggleAutoStartOnBoot() {
+        updateProfile { autoStartOnBoot = !autoStartOnBoot }
+    }
+
     fun selectProfile(id: String) {
         if (id == _state.value.currentProfileId) return
         viewModelScope.launch(Dispatchers.IO) {
