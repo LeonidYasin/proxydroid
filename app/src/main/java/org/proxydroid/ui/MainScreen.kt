@@ -142,6 +142,10 @@ fun MainScreen(
                 enabled = state.profile.useGatewayAsHost,
                 onChange = { onProfileEdit { useGatewayAsHost = it } },
             )
+            AutoStartOnBootCard(
+                enabled = state.profile.autoStartOnBoot,
+                onChange = { onProfileEdit { autoStartOnBoot = it } },
+            )
             AdvancedSection(
                 profile = state.profile,
                 expanded = state.advancedExpanded,
