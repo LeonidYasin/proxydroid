@@ -200,6 +200,7 @@ class Profile {
         isBypassApps = src.isBypassApps
         isAutoConnect = src.isAutoConnect
         useGatewayAsHost = src.useGatewayAsHost
+        autoStartOnBoot = src.autoStartOnBoot
     }
 
     companion object {
