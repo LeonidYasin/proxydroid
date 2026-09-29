@@ -17,8 +17,13 @@ import android.util.Log
 import org.proxydroid.utils.ProxyController
 
 /**
- * Re-arms the proxy after the device boots (or after an app update) when
- * the currently selected profile has `isAutoConnect` enabled.
+ * Re-arms the proxy after the device boots (or after an app update), but only
+ * when the current profile has the user-visible "Start on boot" option
+ * ([Profile.autoStartOnBoot]) enabled.
+ *
+ * This is deliberately independent from [Profile.isAutoConnect]:
+ *   - isAutoConnect  -> re-connect when a matching Wi-Fi network appears
+ *   - autoStartOnBoot -> re-arm after BOOT_COMPLETED / MY_PACKAGE_REPLACED
  *
  * Registered in AndroidManifest.xml for BOOT_COMPLETED,
  * LOCKED_BOOT_COMPLETED, QUICKBOOT_POWERON and MY_PACKAGE_REPLACED.
@@ -31,11 +36,12 @@ class ProxyDroidReceiver : BroadcastReceiver() {
 
         val settings = PreferenceManager.getDefaultSharedPreferences(context)
         val profile = Profile().apply { getProfile(settings) }
-        if (profile.isAutoConnect) {
-            Log.i(TAG, "Auto-connect on $action: starting proxy for profile '${profile.name}'")
+
+        if (profile.autoStartOnBoot) {
+            Log.i(TAG, "Start-on-boot enabled: starting proxy for profile '${profile.name}' on $action")
             ProxyController.startWithConsent(context, profile)
         } else {
-            Log.d(TAG, "Auto-connect disabled for current profile; nothing to do on $action")
+            Log.d(TAG, "Start-on-boot disabled for current profile; nothing to do on $action")
         }
     }
 
