@@ -171,6 +171,7 @@ class Profile {
             isBypassApps = json["isBypassApps"] as? Boolean ?: false
             isAutoConnect = json["isAutoConnect"] as? Boolean ?: false
             useGatewayAsHost = json["useGatewayAsHost"] as? Boolean ?: false
+            autoStartOnBoot = json["autoStartOnBoot"] as? Boolean ?: false
         } catch (e: Exception) {
             Log.e(TAG, "decodeJson failed", e)
         }
