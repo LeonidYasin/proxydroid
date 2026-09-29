@@ -165,3 +165,20 @@ jobs:
             --clobber
           echo "Rolling pre-release ready: $TAG"
           echo "APK asset updated_at: $(gh release view "$TAG" --json updatedAt -q .updatedAt)"
+
+      - name: Comment on PR with RC link
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.rc_tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          gh pr comment ${{ github.event.number }} \\
+            --body "🔄 Rolling pre-release **$TAG** updated with the fresh build.
+
+          Version: \`$VERSION\` · Branch: \`${{ github.head_ref }}\`
+
+          📦 Download APK: https://github.com/${{ github.repository }}/releases/tag/$TAG
+
+          The APK in this release is overwritten on every new build, so always download the latest one. Install and test before merging."
