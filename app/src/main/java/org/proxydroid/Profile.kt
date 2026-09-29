@@ -41,6 +41,13 @@ class Profile {
      */
     var useGatewayAsHost: Boolean = false
 
+    /**
+     * When true, the VPN proxy is re-armed automatically after the device
+     * boots (or after an app update). Independent from [isAutoConnect],
+     * which is about re-connecting when a matching Wi-Fi network appears.
+     */
+    var autoStartOnBoot: Boolean = false
+
     fun init() {
         name = ""
         host = ""
