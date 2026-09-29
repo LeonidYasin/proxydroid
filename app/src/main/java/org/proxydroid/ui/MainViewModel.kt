@@ -47,6 +47,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> }
 
+    /** Job of the periodic liveness probe loop; null when not running. */
+    private var pollingJob: Job? = null
+
     init {
         settings.registerOnSharedPreferenceChangeListener(prefListener)
         // Mirror service-side flags into UI state reactively.
@@ -54,6 +57,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             combine(Utils.working, Utils.connecting) { w, c -> w to c }
                 .collect { (w, c) ->
                     _state.value = _state.value.copy(isWorking = w, isConnecting = c)
+                    // Auto-poll the proxy liveness while the tunnel is active.
+                    if (w) startAlivePolling() else stopAlivePolling()
                 }
         }
         reload()
@@ -61,6 +66,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     override fun onCleared() {
         super.onCleared()
+        pollingJob?.cancel()
         settings.unregisterOnSharedPreferenceChangeListener(prefListener)
     }
 
