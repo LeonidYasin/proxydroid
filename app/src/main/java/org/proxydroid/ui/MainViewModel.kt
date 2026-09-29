@@ -118,7 +118,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun checkAlive() {
         val profile = _state.value.profile
-        val host = profile.host
+        val host = if (profile.useGatewayAsHost) {
+            // Mirror ProxyDroidVpnService: when auto-gateway is enabled,
+            // the actual upstream host is the current network's gateway,
+            // not the manually configured profile.host (which is empty).
+            NetworkUtils.getGatewayIp(getApplication()) ?: profile.host
+        } else {
+            profile.host
+        }
         val port = profile.port
         viewModelScope.launch {
             val alive = withContext(Dispatchers.IO) {
