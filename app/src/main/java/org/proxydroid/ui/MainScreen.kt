@@ -306,6 +306,24 @@ private fun AutoGatewayCard(enabled: Boolean, onChange: (Boolean) -> Unit) {
     }
 }
 
+@Composable
+private fun AutoStartOnBootCard(enabled: Boolean, onChange: (Boolean) -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Startup", style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.height(8.dp))
+            ToggleRow(
+                title = "Start on boot",
+                subtitle = "Automatically re-arm the proxy after the device reboots " +
+                    "or after the app is updated. Independent of the Wi-Fi auto-connect " +
+                    "option above.",
+                checked = enabled,
+                onChange = onChange,
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ProxyForm(profile: Profile, edit: (Profile.() -> Unit) -> Unit) {
