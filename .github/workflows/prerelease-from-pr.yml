@@ -14,6 +14,12 @@ name: Pre-release from PR
 # identical pre-releases and ran many heavy builds in parallel.
 
 on:
+  # Auto-build a rolling pre-release when the 'publish-rc' label is added to a PR.
+  # This is the "one RC before merge" trigger: you push freely, and only when you
+  # are ready to test do you add the label. Re-adding the label rebuilds the SAME
+  # vX.Y.Z-rc tag (APK is overwritten), so Releases never accumulates rc1..rcN.
+  pull_request:
+    types: [labeled]
   workflow_dispatch:
     inputs:
       ref:
