@@ -41,6 +41,13 @@ class Profile {
      */
     var useGatewayAsHost: Boolean = false
 
+    /**
+     * When true, the VPN proxy is re-armed automatically after the device
+     * boots (or after an app update). Independent from [isAutoConnect],
+     * which is about re-connecting when a matching Wi-Fi network appears.
+     */
+    var autoStartOnBoot: Boolean = false
+
     fun init() {
         name = ""
         host = ""
@@ -61,6 +68,7 @@ class Profile {
         isBypassApps = false
         isAutoConnect = false
         useGatewayAsHost = false
+        autoStartOnBoot = false
     }
 
     fun getProfile(settings: SharedPreferences) {
@@ -85,6 +93,7 @@ class Profile {
         isBypassApps = settings.getBoolean("isBypassApps", false)
         isAutoConnect = settings.getBoolean("isAutoConnect", false)
         useGatewayAsHost = settings.getBoolean("useGatewayAsHost", false)
+        autoStartOnBoot = settings.getBoolean("autoStartOnBoot", false)
     }
 
     fun setProfile(settings: SharedPreferences) {
@@ -108,6 +117,7 @@ class Profile {
             putBoolean("isBypassApps", isBypassApps)
             putBoolean("isAutoConnect", isAutoConnect)
             putBoolean("useGatewayAsHost", useGatewayAsHost)
+            putBoolean("autoStartOnBoot", autoStartOnBoot)
             apply()
         }
     }
@@ -134,6 +144,7 @@ class Profile {
         json["isBypassApps"] = isBypassApps
         json["isAutoConnect"] = isAutoConnect
         json["useGatewayAsHost"] = useGatewayAsHost
+        json["autoStartOnBoot"] = autoStartOnBoot
         return json.toJSONString()
     }
 
@@ -160,6 +171,7 @@ class Profile {
             isBypassApps = json["isBypassApps"] as? Boolean ?: false
             isAutoConnect = json["isAutoConnect"] as? Boolean ?: false
             useGatewayAsHost = json["useGatewayAsHost"] as? Boolean ?: false
+            autoStartOnBoot = json["autoStartOnBoot"] as? Boolean ?: false
         } catch (e: Exception) {
             Log.e(TAG, "decodeJson failed", e)
         }
@@ -188,6 +200,7 @@ class Profile {
         isBypassApps = src.isBypassApps
         isAutoConnect = src.isAutoConnect
         useGatewayAsHost = src.useGatewayAsHost
+        autoStartOnBoot = src.autoStartOnBoot
     }
 
     companion object {

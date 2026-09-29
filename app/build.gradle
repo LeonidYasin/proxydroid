@@ -4,6 +4,19 @@ plugins {
     id 'org.mozilla.rust-android-gradle.rust-android'
 }
 
+// --- Version: single source of truth -----------------------------------------
+// app version lives in ../version.properties so that a bump is a one-line change
+// and .github/workflows/auto-tag-release.yml can derive the release tag from it.
+def versionProps = new Properties()
+file('../version.properties').withInputStream { versionProps.load(it) }
+
+def vMajor = (versionProps.getProperty('VERSION_MAJOR') ?: '0').toInteger()
+def vMinor = (versionProps.getProperty('VERSION_MINOR') ?: '0').toInteger()
+def vPatch = (versionProps.getProperty('VERSION_PATCH') ?: '0').toInteger()
+def vName  = "${vMajor}.${vMinor}.${vPatch}"
+def vCode  = vMajor * 10000 + vMinor * 100 + vPatch
+
+// --- Signing / local overrides -----------------------------------------------
 def localProps = new Properties()
 def localPropsFile = rootProject.file('local.properties')
 if (localPropsFile.exists()) {
@@ -31,8 +44,8 @@ android {
         applicationId "org.proxydroid"
         minSdk 24
         targetSdk 36
-        versionCode 74
-        versionName "3.4.0"
+        versionCode vCode
+        versionName vName
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 

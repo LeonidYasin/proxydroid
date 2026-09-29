@@ -142,6 +142,10 @@ fun MainScreen(
                 enabled = state.profile.useGatewayAsHost,
                 onChange = { onProfileEdit { useGatewayAsHost = it } },
             )
+            AutoStartOnBootCard(
+                enabled = state.profile.autoStartOnBoot,
+                onChange = { onProfileEdit { autoStartOnBoot = it } },
+            )
             AdvancedSection(
                 profile = state.profile,
                 expanded = state.advancedExpanded,
@@ -295,6 +299,24 @@ private fun AutoGatewayCard(enabled: Boolean, onChange: (Boolean) -> Unit) {
                 subtitle = "Automatically use the current network's default gateway " +
                     "(e.g. the phone's hotspot address 192.168.43.1) as the upstream " +
                     "proxy host, instead of the manually configured Host.",
+                checked = enabled,
+                onChange = onChange,
+            )
+        }
+    }
+}
+
+@Composable
+private fun AutoStartOnBootCard(enabled: Boolean, onChange: (Boolean) -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Startup", style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.height(8.dp))
+            ToggleRow(
+                title = "Start on boot",
+                subtitle = "Automatically re-arm the proxy after the device reboots " +
+                    "or after the app is updated. Independent of the Wi-Fi auto-connect " +
+                    "option above.",
                 checked = enabled,
                 onChange = onChange,
             )
