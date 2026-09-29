@@ -88,6 +88,7 @@ fun MainScreen(
     onRenameProfile: (String) -> Unit,
     onDeleteProfile: () -> Unit,
     onToggleAdvanced: () -> Unit,
+    onCheckAlive: () -> Unit,
 ) {
     val scroll = rememberScrollState()
     val topBarState = rememberTopAppBarState()
