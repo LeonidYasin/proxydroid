@@ -38,7 +38,10 @@
   - отдельная опция **Start on boot** (`Profile.autoStartOnBoot`, `ProxyDroidReceiver`, UI-карточка Startup);
   - `version.properties` как единый источник версии;
   - workflow'ы `auto-tag-release.yml`, `prerelease-from-pr.yml` (rolling `vX.Y.Z-rc`), чистка `android-build.yml`.
-- ✅ **PR #2** также смержен, `main = f686bca`, `Auto Tag Release` отработал.
+- ✅ **PR #3** — ROADMAP.md (release flow, версионирование, план).
+- ✅ **PR #4** — индикатор живости соединения (`NetworkUtils.isProxyAlive`, `MainUiState.isAlive`, `LivenessIndicator` с кнопкой Check). **Смержен, релиз `v3.6.0` опубликован.**
+- ✅ **PR #5** — видимость RC: логирование `updated_at` APK + комментарий в PR со ссылкой на RC.
+- ✅ **PR #6** (открыт) — фикс GITHUB_TOKEN: `auto-tag-release.yml` теперь явно вызывает `release-apk.yml` через `gh workflow run` (работает в обход GitHub-защиты от рекурсии).
 
 ---
 
@@ -108,8 +111,6 @@
 - Релизные workflow читают версию из `version.properties` — при добавлении нового компонента версии обновлять парсер во всех workflow'ах.
 - `emulator-test` в `android-build.yml` помечен `continue-on-error: true` (не валит сборку, т.к. нестабилен на хостед-раннерах). Вернуть в блокирующие, когда стабилизируется.
 - **Автобамп `version.properties` при мерже PR** (см. отдельный раздел ниже) — сейчас bump ручной, легко забыть → релиз не создастся.
-
----
 
 ## Доработка: автобамп версии при мерже PR
 
