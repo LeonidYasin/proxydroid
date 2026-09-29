@@ -24,6 +24,13 @@ data class MainUiState(
     val isWorking: Boolean = false,
     val isConnecting: Boolean = false,
     val advancedExpanded: Boolean = false,
+    /**
+     * Result of the last upstream-proxy liveness probe.
+     *   true  -> proxy port responded (alive)
+     *   false -> probe failed (dead / unreachable)
+     *   null  -> probe has not run yet (or reset)
+     */
+    val isAlive: Boolean? = null,
 )
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
