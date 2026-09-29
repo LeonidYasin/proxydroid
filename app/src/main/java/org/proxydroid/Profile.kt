@@ -68,6 +68,7 @@ class Profile {
         isBypassApps = false
         isAutoConnect = false
         useGatewayAsHost = false
+        autoStartOnBoot = false
     }
 
     fun getProfile(settings: SharedPreferences) {
