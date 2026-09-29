@@ -132,7 +132,7 @@ fun MainScreen(
                 .verticalScroll(scroll),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            ConnectionCard(state = state, onToggle = onToggle)
+            ConnectionCard(state = state, onToggle = onToggle, onCheckAlive = onCheckAlive)
             ProfileCard(
                 state = state,
                 onSelectProfile = onSelectProfile,
