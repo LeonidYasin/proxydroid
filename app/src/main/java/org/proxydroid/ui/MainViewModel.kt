@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.proxydroid.Profile
+import org.proxydroid.utils.NetworkUtils
 import org.proxydroid.utils.Utils
 
 data class ProfileEntry(val id: String, val name: String)
