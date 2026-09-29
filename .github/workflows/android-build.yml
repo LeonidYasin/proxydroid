@@ -3,8 +3,6 @@ name: Android Build
 on:
   push:
     branches: [ master, main, 'claude/**', 'feature/**', 'test/**', 'refactor/**', 'feat/**' ]
-  pull_request:
-    branches: [ master, main, 'feature/**', 'refactor/**', 'feat/**' ]
 
 jobs:
   build:
