@@ -34,6 +34,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import org.proxydroid.utils.NetworkUtils
 import org.proxydroid.utils.Tun2SocksHelper
 import org.proxydroid.utils.Utils
 
@@ -93,6 +94,21 @@ class ProxyDroidVpnService : VpnService() {
             proxyType = bundle.getString("proxyType", "socks5")
             proxyApps = bundle.getString("proxyApps", "")
             isBypassApps = bundle.getBoolean("isBypassApps", false)
+
+            // Auto-gateway: when set, ignore the manually configured host and
+            // use the current network's default gateway as the upstream proxy
+            // host instead. Useful when sharing a local proxy over a Wi-Fi
+            // hotspot (e.g. proxy listening on the phone itself at the
+            // hotspot gateway address like 192.168.43.1).
+            if (bundle.getBoolean("useGatewayAsHost", false)) {
+                val gw = NetworkUtils.getGatewayIp(this)
+                if (!gw.isNullOrEmpty()) {
+                    Log.i(TAG, "useGatewayAsHost: replacing host='$host' with gateway='$gw'")
+                    host = gw
+                } else {
+                    Log.w(TAG, "useGatewayAsHost: gateway unavailable, keeping host='$host'")
+                }
+            }
         }
 
         startForeground(NOTIFICATION_ID, createNotification())
@@ -197,53 +213,64 @@ class ProxyDroidVpnService : VpnService() {
                 }
             }
 
-            val tun = builder.establish()
-            vpnInterface = tun
-            if (tun == null) {
+            vpnInterface = builder.establish()
+            if (vpnInterface == null) {
                 Log.e(TAG, "Failed to establish VPN interface")
                 Utils.setConnecting(false)
+                Utils.setWorking(false)
+                stopSelf()
                 return
             }
 
-            // Start tun2socks. The Rust crate speaks SOCKS5 directly to the
-            // user-configured upstream — no in-process HTTP/SOCKS bridge needed.
-            val helper = Tun2SocksHelper().also { tun2SocksHelper = it }
+            val fd = vpnInterface!!.fd
+            val helper = Tun2SocksHelper()
+            tun2SocksHelper = helper
+
             val started = helper.start(
-                this,
-                tun.fd,
-                VPN_MTU,
-                proxyType,
-                host,
-                port,
-                user.takeIf { it.isNotEmpty() },
-                password.takeIf { it.isNotEmpty() },
+                vpnService = this,
+                tunFd = fd,
+                mtu = VPN_MTU,
+                proxyType = proxyType,
+                socksHost = host,
+                socksPort = port,
+                socksUser = user.takeIf { it.isNotEmpty() },
+                socksPassword = password.takeIf { it.isNotEmpty() },
             )
 
-            if (started) {
-                Utils.setWorking(true)
-                Log.d(TAG, "VPN started successfully")
-            } else {
-                Log.e(TAG, "Failed to start tun2socks")
+            if (!started) {
+                Log.e(TAG, "tun2socks failed to start")
+                Utils.setConnecting(false)
+                Utils.setWorking(false)
+                stopVpn()
+                stopSelf()
+                return
             }
 
-        } catch (e: Exception) {
-            Log.e(TAG, "Error starting VPN", e)
-        } finally {
             Utils.setConnecting(false)
+            Utils.setWorking(true)
+            Log.i(TAG, "VPN established and tun2socks running")
+        } catch (t: Throwable) {
+            Log.e(TAG, "startVpn failed", t)
+            Utils.setConnecting(false)
+            Utils.setWorking(false)
+            stopVpn()
+            stopSelf()
         }
     }
 
     private fun stopVpn() {
-        Log.d(TAG, "Stopping VPN")
-
         try {
             tun2SocksHelper?.stop()
-            tun2SocksHelper = null
-
-            vpnInterface?.close()
-            vpnInterface = null
-        } catch (e: Exception) {
-            Log.e(TAG, "Error stopping VPN", e)
+        } catch (t: Throwable) {
+            Log.e(TAG, "tun2socks stop threw", t)
         }
+        tun2SocksHelper = null
+
+        try {
+            vpnInterface?.close()
+        } catch (t: Throwable) {
+            Log.e(TAG, "vpn interface close threw", t)
+        }
+        vpnInterface = null
     }
 }

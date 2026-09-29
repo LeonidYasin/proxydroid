@@ -72,7 +72,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun updateProfile(transform: Profile.() -> Unit) {
-        val next = _state.value.profile.copy().apply(transform)
+        val next = Profile().also { it.copyFrom(_state.value.profile) }.apply(transform)
         _state.value = _state.value.copy(profile = next)
         viewModelScope.launch(Dispatchers.IO) {
             next.setProfile(settings)
@@ -82,6 +82,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun toggleAdvanced() {
         _state.value = _state.value.copy(advancedExpanded = !_state.value.advancedExpanded)
+    }
+
+    fun toggleUseGatewayAsHost() {
+        updateProfile { useGatewayAsHost = !useGatewayAsHost }
     }
 
     fun selectProfile(id: String) {
@@ -188,21 +192,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val ids = if (raw.isNullOrEmpty()) {
             // Bootstrap a single default profile.
             listOf("1").also {
-                settings.edit()
-                    .putString("profileValues", "1|")
-                    .putString("profileEntries", profileNameFor("1") + "|")
-                    .apply()
+                settings.edit().putString("profileValues", "1|").apply()
+                settings.edit().putString("profileEntries", "Profile 1|").apply()
             }
         } else {
-            raw.split("|").map { it.trim() }.filter { it.isNotEmpty() }
+            raw.split("|").mapNotNull { it.trim().takeIf { s -> s.isNotEmpty() } }
         }
-        return ids.map { id ->
-            val storedName = settings.getString(id, null)?.let { json ->
-                runCatching {
-                    Profile().apply { decodeJson(json) }.name.takeIf { it.isNotBlank() }
-                }.getOrNull()
-            }
-            ProfileEntry(id, storedName ?: profileNameFor(id))
-        }
+        return ids.map { ProfileEntry(it, profileNameFor(it)) }
     }
 }

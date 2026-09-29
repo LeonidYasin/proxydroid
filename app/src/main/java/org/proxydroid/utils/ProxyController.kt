@@ -27,6 +27,7 @@ object ProxyController {
         putBoolean("isNTLM", profile.isNTLM)
         putBoolean("isDNSProxy", profile.isDNSProxy)
         putBoolean("isPAC", profile.isPAC)
+        putBoolean("useGatewayAsHost", profile.useGatewayAsHost)
         putInt("port", profile.port)
     }
 
