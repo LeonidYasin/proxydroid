@@ -117,6 +117,7 @@ class Profile {
             putBoolean("isBypassApps", isBypassApps)
             putBoolean("isAutoConnect", isAutoConnect)
             putBoolean("useGatewayAsHost", useGatewayAsHost)
+            putBoolean("autoStartOnBoot", autoStartOnBoot)
             apply()
         }
     }
