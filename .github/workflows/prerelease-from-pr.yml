@@ -1,8 +1,7 @@
 name: Pre-release from PR
 
 # Publishes ONE rolling pre-release APK per feature/fix branch so the APK can
-# be downloaded and installed BEFORE the PR is merged (see rule "for APK PRs,
-# install the artefact before merge").
+# be downloaded and installed BEFORE the PR is merged.
 #
 # The tag is FIXED per version: vMAJOR.MINOR.PATCH-rc (no run number).
 # Each new build overwrites the APK inside the same release (gh release upload
@@ -10,14 +9,8 @@ name: Pre-release from PR
 # branch instead of a growing rc1, rc2, ... rcN pile.
 #
 # Trigger: manual dispatch, or adding the 'publish-rc' label to a PR.
-# We deliberately do NOT trigger on every push: that produced dozens of
-# identical pre-releases and ran many heavy builds in parallel.
 
 on:
-  # Auto-build a rolling pre-release when the 'publish-rc' label is added to a PR.
-  # This is the "one RC before merge" trigger: you push freely, and only when you
-  # are ready to test do you add the label. Re-adding the label rebuilds the SAME
-  # vX.Y.Z-rc tag (APK is overwritten), so Releases never accumulates rc1..rcN.
   pull_request:
     types: [labeled]
   workflow_dispatch:
@@ -27,17 +20,16 @@ on:
         required: false
         default: ''
 
-# Only one pre-release build at a time; a newer run cancels an older one.
 concurrency:
   group: prerelease-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   build-and-publish-prerelease:
-    # Run on manual dispatch, OR when the added PR label is exactly 'publish-rc'.
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' && github.event.label.name == 'publish-rc')
@@ -46,8 +38,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          # manual dispatch with explicit ref -> that ref;
-          # PR labeled -> the PR's head branch; otherwise current ref.
           ref: ${{ github.event.inputs.ref || github.event.pull_request.head.ref || github.ref }}
 
       - name: Set up JDK 17
@@ -155,12 +145,18 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Pre-release $TAG exists — overwriting APK with the fresh build."
           else
-            gh release create "$TAG" \
-              --title "proxydroid $TAG (rolling pre-release)" \
-              --notes "Rolling pre-release APK for testing before merge. Version: $VERSION. Branch: ${{ github.ref_name }}. The APK in this release is overwritten on every new build, so always download the latest one." \
-              --prerelease
+            gh release create "$TAG" --title "proxydroid $TAG (rolling pre-release)" --notes "Rolling pre-release APK for testing before merge. Version: $VERSION." --prerelease
           fi
-          gh release upload "$TAG" \
-            app/build/outputs/apk/debug/app-debug.apk#app-debug.apk \
-            --clobber
+          gh release upload "$TAG" app/build/outputs/apk/debug/app-debug.apk#app-debug.apk --clobber
           echo "Rolling pre-release ready: $TAG"
+          echo "APK asset updated_at: $(gh release view "$TAG" --json updatedAt -q .updatedAt)"
+
+      - name: Comment on PR with RC link
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.rc_tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          gh pr comment ${{ github.event.number }} --body "Rolling pre-release $TAG updated. Version: $VERSION. Download APK: https://github.com/${{ github.repository }}/releases/tag/$TAG"
