@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.proxydroid.Profile
+import org.proxydroid.utils.NetworkUtils
 import org.proxydroid.utils.Utils
 
 data class ProfileEntry(val id: String, val name: String)
@@ -24,6 +25,13 @@ data class MainUiState(
     val isWorking: Boolean = false,
     val isConnecting: Boolean = false,
     val advancedExpanded: Boolean = false,
+    /**
+     * Result of the last upstream-proxy liveness probe.
+     *   true  -> proxy port responded (alive)
+     *   false -> probe failed (dead / unreachable)
+     *   null  -> probe has not run yet (or reset)
+     */
+    val isAlive: Boolean? = null,
 )
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
@@ -90,6 +98,25 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun toggleAutoStartOnBoot() {
         updateProfile { autoStartOnBoot = !autoStartOnBoot }
+    }
+
+    /**
+     * Runs a quick TCP liveness probe against the current profile's
+     * upstream proxy and publishes the result into [MainUiState.isAlive].
+     *
+     * The probe runs on Dispatchers.IO and never throws: any failure is
+     * reported as isAlive = false.
+     */
+    fun checkAlive() {
+        val profile = _state.value.profile
+        val host = profile.host
+        val port = profile.port
+        viewModelScope.launch {
+            val alive = withContext(Dispatchers.IO) {
+                NetworkUtils.isProxyAlive(host, port)
+            }
+            _state.value = _state.value.copy(isAlive = alive)
+        }
     }
 
     fun selectProfile(id: String) {

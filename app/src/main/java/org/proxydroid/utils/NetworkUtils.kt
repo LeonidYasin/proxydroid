@@ -10,6 +10,8 @@ package org.proxydroid.utils
 
 import android.content.Context
 import android.net.ConnectivityManager
+import java.net.InetSocketAddress
+import java.net.Socket
 
 /**
  * Returns the IP address of the current network's default gateway.
@@ -32,5 +34,33 @@ object NetworkUtils {
             .firstOrNull { it.destination?.prefixLength == 0 }
             ?.gateway
             ?.hostAddress
+    }
+
+    /**
+     * Quick liveness probe for an upstream proxy.
+     *
+     * Opens a TCP connection to [host]:[port] with the given timeout and
+     * immediately closes it. Returns true if the connection was established
+     * within the timeout, false otherwise (connection refused, timeout,
+     * unknown host, no route).
+     *
+     * This is a lightweight check: it only verifies that *something* listens
+     * on the proxy port. It does NOT perform a full proxy handshake (that
+     * would require knowing the proxy type: socks5 / http / etc.), so a
+     * positive result means "port is reachable", not necessarily "proxy
+     * correctly forwards traffic".
+     *
+     * Must be called from a background thread / coroutine on Dispatchers.IO.
+     */
+    fun isProxyAlive(host: String, port: Int, timeoutMs: Int = 2000): Boolean {
+        if (host.isBlank() || port !in 1..65535) return false
+        return try {
+            Socket().use { socket ->
+                socket.connect(InetSocketAddress(host, port), timeoutMs)
+                true
+            }
+        } catch (_: Exception) {
+            false
+        }
     }
 }

@@ -56,6 +56,7 @@ class ProxyDroid : ComponentActivity() {
                     onRenameProfile = viewModel::renameCurrent,
                     onDeleteProfile = viewModel::deleteCurrent,
                     onToggleAdvanced = viewModel::toggleAdvanced,
+                    onCheckAlive = viewModel::checkAlive,
                 )
             }
         }
