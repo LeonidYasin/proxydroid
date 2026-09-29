@@ -70,3 +70,13 @@ jobs:
           git push origin "${TAG}"
           echo "Created and pushed tag ${TAG}."
           echo "created=true" >> "$GITHUB_OUTPUT"
+
+      - name: Trigger release-apk workflow
+        if: steps.tagstep.outputs.created == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh workflow run release-apk.yml --ref "${TAG}" --field tag="${TAG}"
+          echo "Triggered release-apk.yml for ${TAG}."
