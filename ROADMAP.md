@@ -106,6 +106,40 @@
 
 ---
 
+### 6. Отображение фактически используемого host IP в форме прокси 🟢 простая
+
+**Зачем:** когда включена опция `useGatewayAsHost`, пользователь **не видит, какой именно IP будет использован**. Поле Host остаётся пустым или показывает дефолт — непонятно, что реально применится при подключении.
+
+**Куда:**
+- `app/src/main/java/org/proxydroid/ui/MainViewModel.kt` — добавить в `MainUiState` поле `effectiveHost: String?` — реальный адрес, который будет использован с учётом `useGatewayAsHost`. Заполнять при `useGatewayAsHost == true` через `NetworkUtils.getGatewayIp(context)`.
+- `app/src/main/java/org/proxydroid/ui/MainScreen.kt` — в `ProxyForm` рядом с полем **Host** показывать мелким текстом: `Будет использован: 192.168.43.1` (только когда `useGatewayAsHost` включён).
+
+**Критерий готовности:** включил `useGatewayAsHost` → в форме рядом с Host видно «Будет использован: `<IP>`»; сменил сеть → отображаемый IP обновился.
+
+---
+
+### 7. Отображение IP дефолт-гейтвея рядом с опцией «Use gateway as host» 🟢 простая
+
+**Зачем:** сейчас `AutoGatewayCard` — просто тумблер. Пользователь не знает, какой IP сейчас у гейтвея — включит, а потом окажется, что попал не туда.
+
+**Куда:**
+- `MainViewModel.kt` — в `MainUiState` добавить `gatewayIp: String?`. Обновлять через `NetworkUtils.getGatewayIp(context)`.
+- `MainScreen.kt` — в `AutoGatewayCard` под текстом опции показывать `Detected gateway: 192.168.43.1` (или `Unknown` / `Not on Wi-Fi`).
+
+**Критерий готовности:** в карточке Auto gateway видно текущий IP гейтвея; при смене сети — обновилось.
+
+---
+
+### Общая инфраструктура для #6 и #7 (можно сделать в одном PR)
+
+Обе задачи требуют **реактивного отслеживания сетевых изменений**. Общий механизм:
+- `MainViewModel` — слушатель `ConnectivityManager.registerDefaultNetworkCallback`, при изменениях пересчитывать `gatewayIp` и `effectiveHost`.
+- Или (проще) — пересчитывать при `onResume` + при переключении `useGatewayAsHost`.
+
+**Рекомендуемый порядок:** сначала #7 (gateway IP в Auto gateway card — просто и наглядно), потом #6 (effective host в форме).
+
+---
+
 ## Известные техдолги
 
 - Релизные workflow читают версию из `version.properties` — при добавлении нового компонента версии обновлять парсер во всех workflow'ах.
