@@ -261,4 +261,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         return ids.map { ProfileEntry(it, profileNameFor(it)) }
     }
+
+    companion object {
+        /** Interval between automatic liveness probes while the tunnel is up. */
+        private const val ALIVE_POLL_INTERVAL_MS = 15_000L
+    }
 }
