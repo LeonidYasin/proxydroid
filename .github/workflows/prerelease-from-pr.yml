@@ -164,3 +164,4 @@ jobs:
             app/build/outputs/apk/debug/app-debug.apk#app-debug.apk \
             --clobber
           echo "Rolling pre-release ready: $TAG"
+          echo "APK asset updated_at: $(gh release view "$TAG" --json updatedAt -q .updatedAt)"
