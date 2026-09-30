@@ -68,6 +68,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     if (w) startAlivePolling() else stopAlivePolling()
                 }
         }
+        // Mirror errors reported by the VPN service (e.g. "no gateway on
+        // cellular", "failed to start tun2socks") into the UI state so they
+        // are shown instead of dying silently in the service.
+        viewModelScope.launch {
+            Utils.lastError.collect { err ->
+                _state.value = _state.value.copy(lastError = err)
+            }
+        }
         reload()
     }
 
