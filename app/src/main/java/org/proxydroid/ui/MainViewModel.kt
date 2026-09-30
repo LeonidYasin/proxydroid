@@ -117,28 +117,69 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
+     * Publishes a human-readable connection error into [MainUiState.lastError].
+     * Called by UI/service when a connect attempt fails, so the failure is
+     * always visible instead of dying silently.
+     */
+    fun reportConnectionError(message: String) {
+        _state.value = _state.value.copy(lastError = message, isConnecting = false)
+    }
+
+    /** Clears [MainUiState.lastError] (e.g. after the user dismisses it). */
+    fun clearError() {
+        _state.value = _state.value.copy(lastError = null)
+    }
+
+    /**
      * Runs a quick TCP liveness probe against the current profile's
      * upstream proxy and publishes the result into [MainUiState.isAlive].
      *
-     * The probe runs on Dispatchers.IO and never throws: any failure is
-     * reported as isAlive = false.
+     * Unlike the previous version, this does NOT silently swallow the
+     * reason: when the probe cannot even be attempted (auto-gateway is on
+     * but the current network has no usable gateway - typical on cellular)
+     * or when the probe fails, the reason is written to [MainUiState.lastError]
+     * so the UI can show it.
      */
     fun checkAlive() {
         val profile = _state.value.profile
-        val host = if (profile.useGatewayAsHost) {
-            // Mirror ProxyDroidVpnService: when auto-gateway is enabled,
-            // the actual upstream host is the current network's gateway,
-            // not the manually configured profile.host (which is empty).
-            NetworkUtils.getGatewayIp(getApplication()) ?: profile.host
-        } else {
-            profile.host
-        }
         val port = profile.port
+
+        val host: String
+        if (profile.useGatewayAsHost) {
+            val gw = NetworkUtils.getGatewayIp(getApplication())
+            if (gw.isNullOrEmpty()) {
+                // Auto-gateway needs a real upstream gateway. On cellular the
+                // default route usually has no gateway, so there is nothing
+                // to probe - report it explicitly instead of showing a
+                // misleading red indicator.
+                val fb = profile.host
+                if (fb.isBlank()) {
+                    reportConnectionError(
+                        "Auto-gateway is on, but the current network has no " +
+                            "gateway (cellular?). Set the proxy host manually " +
+                            "or connect to Wi-Fi."
+                    )
+                    _state.value = _state.value.copy(isAlive = false)
+                    return
+                }
+                host = fb
+            } else {
+                host = gw
+            }
+        } else {
+            host = profile.host
+        }
+
         viewModelScope.launch {
             val alive = withContext(Dispatchers.IO) {
                 NetworkUtils.isProxyAlive(host, port)
             }
-            _state.value = _state.value.copy(isAlive = alive)
+            _state.value = _state.value.copy(
+                isAlive = alive,
+                lastError = if (alive) null else
+                    "Proxy unreachable at $host:$port (connection refused, " +
+                        "timed out, or no route).",
+            )
         }
     }
 
