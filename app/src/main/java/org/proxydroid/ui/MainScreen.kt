@@ -73,6 +73,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import org.proxydroid.AppManager
+import org.proxydroid.BuildConfig
 import org.proxydroid.BypassListActivity
 import org.proxydroid.Profile
 import org.proxydroid.R
