@@ -140,16 +140,38 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.version.outputs.rc_tag }}
           VERSION: ${{ steps.version.outputs.version }}
+          BUILD_SHA: ${{ github.sha }}
+          SHORT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
+          SHORT_SHA="${BUILD_SHA:0:8}"
+          NOTES="Rolling pre-release APK for testing before merge.
+          Version: ${VERSION}
+          Built from commit: ${BUILD_SHA}
+          Branch: ${{ github.event.pull_request.head.ref || github.ref_name }}"
+
+          # Roll the git tag onto the CURRENT commit so the release page shows the
+          # fresh source revision instead of a stale one. Without this, --clobber
+          # updates only the APK asset and the tag keeps pointing at an old SHA.
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f "$TAG" "$BUILD_SHA"
+          git push -f origin "refs/tags/$TAG"
+
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Pre-release $TAG exists — overwriting APK with the fresh build."
+            echo "Pre-release $TAG exists — refreshing notes + overwriting APK with the fresh build."
+            gh release edit "$TAG" --notes "$NOTES" --target "$BUILD_SHA"
           else
-            gh release create "$TAG" --title "proxydroid $TAG (rolling pre-release)" --notes "Rolling pre-release APK for testing before merge. Version: $VERSION." --prerelease
+            gh release create "$TAG" \
+              --title "proxydroid $TAG (rolling pre-release)" \
+              --notes "$NOTES" \
+              --target "$BUILD_SHA" \
+              --prerelease
           fi
           gh release upload "$TAG" app/build/outputs/apk/debug/app-debug.apk#app-debug.apk --clobber
-          echo "Rolling pre-release ready: $TAG"
-          echo "APK asset updated_at: $(gh release view "$TAG" --json updatedAt -q .updatedAt)"
+          echo "Rolling pre-release ready: $TAG (commit $SHORT_SHA)"
+          echo "Release publishedAt: $(gh release view "$TAG" --json publishedAt -q .publishedAt)"
+          echo "Release tagName: $(gh release view "$TAG" --json tagName -q .tagName)"
 
       - name: Comment on PR with RC link
         if: github.event_name == 'pull_request'
