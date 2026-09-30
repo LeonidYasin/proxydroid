@@ -35,6 +35,13 @@ data class MainUiState(
      *   null  -> probe has not run yet (or reset)
      */
     val isAlive: Boolean? = null,
+    /**
+     * Human-readable description of the last connection failure, or null
+     * when there is nothing to report. Set by [reportConnectionError] and
+     * cleared by [clearError]. Surfaced in the UI so a failing connect
+     * never dies silently.
+     */
+    val lastError: String? = null,
 )
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
