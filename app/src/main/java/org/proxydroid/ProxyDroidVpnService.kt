@@ -247,7 +247,10 @@ class ProxyDroidVpnService : VpnService() {
             )
 
             if (!started) {
-                Log.e(TAG, "tun2socks failed to start")
+                val msg = "Failed to start tun2socks (proxy $proxyType://$host:$port). " +
+                    "Check that the proxy is reachable from this network."
+                Log.e(TAG, msg)
+                Utils.setLastError(msg)
                 Utils.setConnecting(false)
                 Utils.setWorking(false)
                 stopVpn()
@@ -255,11 +258,14 @@ class ProxyDroidVpnService : VpnService() {
                 return
             }
 
+            Utils.setLastError(null)
             Utils.setConnecting(false)
             Utils.setWorking(true)
             Log.i(TAG, "VPN established and tun2socks running")
         } catch (t: Throwable) {
-            Log.e(TAG, "startVpn failed", t)
+            val msg = "Failed to establish VPN: ${t.javaClass.simpleName}: ${t.message ?: \"no details\"}"
+            Log.e(TAG, msg, t)
+            Utils.setLastError(msg)
             Utils.setConnecting(false)
             Utils.setWorking(false)
             stopVpn()
