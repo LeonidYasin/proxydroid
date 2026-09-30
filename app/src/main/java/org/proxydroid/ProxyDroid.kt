@@ -33,6 +33,7 @@ class ProxyDroid : ComponentActivity() {
     ) { result ->
         if (result.resultCode == RESULT_OK) {
             val extras = ProxyController.buildExtras(viewModel.state.value.profile)
+            Utils.setLastError(null)
             startService(
                 Intent(this, ProxyDroidVpnService::class.java).putExtras(extras)
             )
@@ -87,6 +88,7 @@ class ProxyDroid : ComponentActivity() {
             vpnConsentLauncher.launch(consent)
         } else {
             val extras = ProxyController.buildExtras(viewModel.state.value.profile)
+            Utils.setLastError(null)
             startService(
                 Intent(this, ProxyDroidVpnService::class.java).putExtras(extras)
             )
