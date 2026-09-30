@@ -103,7 +103,15 @@ fun MainScreen(
             .nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             LargeTopAppBar(
-                title = { Text(stringRes(R.string.app_name)) },
+                title = {
+                    Column {
+                        Text(stringRes(R.string.app_name))
+                        Text(
+                            text = "v${BuildConfig.VERSION_NAME} · ${BuildConfig.BUILD_SHA.take(8)}",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                },
                 actions = {
                     IconButton(onClick = { menuOpen = true }) {
                         Icon(Icons.Default.MoreVert, contentDescription = "More")
@@ -118,6 +126,20 @@ fun MainScreen(
                             text = { Text("Delete profile") },
                             onClick = { menuOpen = false; showDeleteConfirm = true },
                             leadingIcon = { Icon(Icons.Default.Delete, null) },
+                        )
+                        HorizontalDivider()
+                        DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text("About")
+                                    Text(
+                                        text = "v${BuildConfig.VERSION_NAME} · ${BuildConfig.BUILD_SHA.take(8)}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
+                                }
+                            },
+                            onClick = { menuOpen = false },
+                            leadingIcon = { Icon(Icons.Default.Info, null) },
                         )
                     }
                 },
