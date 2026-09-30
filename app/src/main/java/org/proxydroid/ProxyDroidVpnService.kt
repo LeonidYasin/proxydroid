@@ -277,7 +277,7 @@ class ProxyDroidVpnService : VpnService() {
             Utils.setWorking(true)
             Log.i(TAG, "VPN established and tun2socks running")
         } catch (t: Throwable) {
-            val msg = "Failed to establish VPN: ${t.javaClass.simpleName}: ${t.message ?: \"no details\"}"
+            val msg = "Failed to establish VPN: ${t.javaClass.simpleName}: ${t.message ?: "no details"}"
             Log.e(TAG, msg, t)
             Utils.setLastError(msg)
             Utils.setConnecting(false)
