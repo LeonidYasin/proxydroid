@@ -129,7 +129,7 @@ fun MainScreen(
                             onClick = { menuOpen = false; showDeleteConfirm = true },
                             leadingIcon = { Icon(Icons.Default.Delete, null) },
                         )
-                        HorizontalDivider()
+                        Divider()
                         DropdownMenuItem(
                             text = {
                                 Column {
