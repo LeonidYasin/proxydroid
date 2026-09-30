@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -71,6 +72,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import org.proxydroid.AppManager
+import org.proxydroid.BuildConfig
 import org.proxydroid.BypassListActivity
 import org.proxydroid.Profile
 import org.proxydroid.R
@@ -103,7 +105,15 @@ fun MainScreen(
             .nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             LargeTopAppBar(
-                title = { Text(stringRes(R.string.app_name)) },
+                title = {
+                    Column {
+                        Text(stringRes(R.string.app_name))
+                        Text(
+                            text = "v${BuildConfig.VERSION_NAME} · ${BuildConfig.BUILD_SHA.take(8)}",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                },
                 actions = {
                     IconButton(onClick = { menuOpen = true }) {
                         Icon(Icons.Default.MoreVert, contentDescription = "More")
@@ -118,6 +128,20 @@ fun MainScreen(
                             text = { Text("Delete profile") },
                             onClick = { menuOpen = false; showDeleteConfirm = true },
                             leadingIcon = { Icon(Icons.Default.Delete, null) },
+                        )
+                        Divider()
+                        DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text("About")
+                                    Text(
+                                        text = "v${BuildConfig.VERSION_NAME} · ${BuildConfig.BUILD_SHA.take(8)}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
+                                }
+                            },
+                            onClick = { menuOpen = false },
+                            leadingIcon = { Icon(Icons.Default.Info, null) },
                         )
                     }
                 },
@@ -253,23 +277,36 @@ private fun LivenessIndicator(state: MainUiState, onCheckAlive: () -> Unit) {
         false -> Color(0xFFE53935) to "Proxy not responding"
         null -> Color(0xFF9E9E9E) to "Proxy not checked yet"
     }
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            modifier = Modifier
-                .size(8.dp)
-                .background(dotColor, CircleShape),
-        )
-        Spacer(Modifier.width(6.dp))
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodySmall,
-        )
-        Spacer(Modifier.width(8.dp))
-        TextButton(
-            onClick = onCheckAlive,
-            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
-        ) {
-            Text("Check", style = MaterialTheme.typography.bodySmall)
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .background(dotColor, CircleShape),
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Spacer(Modifier.width(8.dp))
+            TextButton(
+                onClick = onCheckAlive,
+                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+            ) {
+                Text("Check", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        // Show the concrete reason of the last failure instead of dying
+        // silently: e.g. "no gateway on cellular" or "connection refused".
+        val err = state.lastError
+        if (err != null) {
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = err,
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFFE53935),
+            )
         }
     }
 }

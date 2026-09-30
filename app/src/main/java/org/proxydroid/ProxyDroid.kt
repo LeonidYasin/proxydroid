@@ -23,6 +23,7 @@ import org.proxydroid.ui.MainScreen
 import org.proxydroid.ui.MainViewModel
 import org.proxydroid.ui.theme.ProxyDroidTheme
 import org.proxydroid.utils.ProxyController
+import org.proxydroid.utils.Utils
 
 class ProxyDroid : ComponentActivity() {
 
@@ -33,6 +34,7 @@ class ProxyDroid : ComponentActivity() {
     ) { result ->
         if (result.resultCode == RESULT_OK) {
             val extras = ProxyController.buildExtras(viewModel.state.value.profile)
+            Utils.setLastError(null)
             startService(
                 Intent(this, ProxyDroidVpnService::class.java).putExtras(extras)
             )
@@ -87,6 +89,7 @@ class ProxyDroid : ComponentActivity() {
             vpnConsentLauncher.launch(consent)
         } else {
             val extras = ProxyController.buildExtras(viewModel.state.value.profile)
+            Utils.setLastError(null)
             startService(
                 Intent(this, ProxyDroidVpnService::class.java).putExtras(extras)
             )

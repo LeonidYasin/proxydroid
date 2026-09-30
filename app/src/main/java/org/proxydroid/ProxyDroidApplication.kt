@@ -18,5 +18,44 @@
 package org.proxydroid
 
 import android.app.Application
+import android.util.Log
+import org.proxydroid.utils.Utils
 
-class ProxyDroidApplication : Application()
+class ProxyDroidApplication : Application() {
+
+    override fun onCreate() {
+        super.onCreate()
+        installGlobalExceptionHandler()
+    }
+
+    /**
+     * Last-resort safety net: catches any exception that escapes all local
+     * try/catch blocks, in any thread. Default Android behaviour kills the
+     * process with no user-visible explanation; here we record the reason
+     * into [Utils.lastError] (so the UI can surface it on next launch) and
+     * log it.
+     *
+     * NOTE: this CANNOT catch framework-level failures thrown before our
+     * code runs (e.g. SecurityException from startForeground with a
+     * disallowed FGS type). Those must be fixed in the manifest /
+     * startForeground call itself.
+     */
+    private fun installGlobalExceptionHandler() {
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            try {
+                val msg = "Uncaught ${throwable.javaClass.simpleName}: " +
+                    (throwable.message ?: "no message")
+                Log.e(TAG, msg, throwable)
+                Utils.setLastError(msg)
+            } catch (_: Throwable) {
+                // Never let the handler itself crash the process.
+            }
+            previous?.uncaughtException(thread, throwable)
+        }
+    }
+
+    companion object {
+        private const val TAG = "ProxyDroidApp"
+    }
+}

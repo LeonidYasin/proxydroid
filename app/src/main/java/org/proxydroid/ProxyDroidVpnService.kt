@@ -21,6 +21,7 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.pm.ServiceInfo
 import android.content.Context
 import android.content.Intent
 import android.net.VpnService
@@ -105,13 +106,35 @@ class ProxyDroidVpnService : VpnService() {
                 if (!gw.isNullOrEmpty()) {
                     Log.i(TAG, "useGatewayAsHost: replacing host='$host' with gateway='$gw'")
                     host = gw
+                } else if (host.isBlank()) {
+                    // No gateway (typical on cellular) and no manual host:
+                    // there is nothing to connect to. Fail fast with a clear
+                    // message instead of starting a tunnel to an empty host.
+                    val msg = "Auto-gateway is enabled, but this network has no " +
+                        "gateway (cellular?). Set the proxy host manually or " +
+                        "connect to Wi-Fi."
+                    Log.e(TAG, msg)
+                    Utils.setLastError(msg)
+                    Utils.setConnecting(false)
+                    Utils.setWorking(false)
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopSelf()
+                    return START_NOT_STICKY
                 } else {
                     Log.w(TAG, "useGatewayAsHost: gateway unavailable, keeping host='$host'")
                 }
             }
         }
 
-        startForeground(NOTIFICATION_ID, createNotification())
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(
+                NOTIFICATION_ID,
+                createNotification(),
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, createNotification())
+        }
 
         vpnJob?.cancel()
         vpnJob = serviceScope.launch { startVpn() }
@@ -238,7 +261,10 @@ class ProxyDroidVpnService : VpnService() {
             )
 
             if (!started) {
-                Log.e(TAG, "tun2socks failed to start")
+                val msg = "Failed to start tun2socks (proxy $proxyType://$host:$port). " +
+                    "Check that the proxy is reachable from this network."
+                Log.e(TAG, msg)
+                Utils.setLastError(msg)
                 Utils.setConnecting(false)
                 Utils.setWorking(false)
                 stopVpn()
@@ -246,11 +272,14 @@ class ProxyDroidVpnService : VpnService() {
                 return
             }
 
+            Utils.setLastError(null)
             Utils.setConnecting(false)
             Utils.setWorking(true)
             Log.i(TAG, "VPN established and tun2socks running")
         } catch (t: Throwable) {
-            Log.e(TAG, "startVpn failed", t)
+            val msg = "Failed to establish VPN: ${t.javaClass.simpleName}: ${t.message ?: "no details"}"
+            Log.e(TAG, msg, t)
+            Utils.setLastError(msg)
             Utils.setConnecting(false)
             Utils.setWorking(false)
             stopVpn()

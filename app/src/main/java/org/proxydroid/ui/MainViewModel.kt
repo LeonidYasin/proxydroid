@@ -6,10 +6,13 @@ import android.preference.PreferenceManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.proxydroid.Profile
@@ -32,6 +35,13 @@ data class MainUiState(
      *   null  -> probe has not run yet (or reset)
      */
     val isAlive: Boolean? = null,
+    /**
+     * Human-readable description of the last connection failure, or null
+     * when there is nothing to report. Set by [reportConnectionError] and
+     * cleared by [clearError]. Surfaced in the UI so a failing connect
+     * never dies silently.
+     */
+    val lastError: String? = null,
 )
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
@@ -44,6 +54,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> }
 
+    /** Job of the periodic liveness probe loop; null when not running. */
+    private var pollingJob: Job? = null
+
     init {
         settings.registerOnSharedPreferenceChangeListener(prefListener)
         // Mirror service-side flags into UI state reactively.
@@ -51,13 +64,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             combine(Utils.working, Utils.connecting) { w, c -> w to c }
                 .collect { (w, c) ->
                     _state.value = _state.value.copy(isWorking = w, isConnecting = c)
+                    // Auto-poll the proxy liveness while the tunnel is active.
+                    if (w) startAlivePolling() else stopAlivePolling()
                 }
+        }
+        // Mirror errors reported by the VPN service (e.g. "no gateway on
+        // cellular", "failed to start tun2socks") into the UI state so they
+        // are shown instead of dying silently in the service.
+        viewModelScope.launch {
+            Utils.lastError.collect { err ->
+                _state.value = _state.value.copy(lastError = err)
+            }
         }
         reload()
     }
 
     override fun onCleared() {
         super.onCleared()
+        pollingJob?.cancel()
         settings.unregisterOnSharedPreferenceChangeListener(prefListener)
     }
 
@@ -101,22 +125,91 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
+     * Publishes a human-readable connection error into [MainUiState.lastError].
+     * Called by UI/service when a connect attempt fails, so the failure is
+     * always visible instead of dying silently.
+     */
+    fun reportConnectionError(message: String) {
+        _state.value = _state.value.copy(lastError = message, isConnecting = false)
+    }
+
+    /** Clears [MainUiState.lastError] (e.g. after the user dismisses it). */
+    fun clearError() {
+        _state.value = _state.value.copy(lastError = null)
+    }
+
+    /**
      * Runs a quick TCP liveness probe against the current profile's
      * upstream proxy and publishes the result into [MainUiState.isAlive].
      *
-     * The probe runs on Dispatchers.IO and never throws: any failure is
-     * reported as isAlive = false.
+     * Unlike the previous version, this does NOT silently swallow the
+     * reason: when the probe cannot even be attempted (auto-gateway is on
+     * but the current network has no usable gateway - typical on cellular)
+     * or when the probe fails, the reason is written to [MainUiState.lastError]
+     * so the UI can show it.
      */
     fun checkAlive() {
         val profile = _state.value.profile
-        val host = profile.host
         val port = profile.port
+
+        val host: String
+        if (profile.useGatewayAsHost) {
+            val gw = NetworkUtils.getGatewayIp(getApplication())
+            if (gw.isNullOrEmpty()) {
+                // Auto-gateway needs a real upstream gateway. On cellular the
+                // default route usually has no gateway, so there is nothing
+                // to probe - report it explicitly instead of showing a
+                // misleading red indicator.
+                val fb = profile.host
+                if (fb.isBlank()) {
+                    reportConnectionError(
+                        "Auto-gateway is on, but the current network has no " +
+                            "gateway (cellular?). Set the proxy host manually " +
+                            "or connect to Wi-Fi."
+                    )
+                    _state.value = _state.value.copy(isAlive = false)
+                    return
+                }
+                host = fb
+            } else {
+                host = gw
+            }
+        } else {
+            host = profile.host
+        }
+
         viewModelScope.launch {
             val alive = withContext(Dispatchers.IO) {
                 NetworkUtils.isProxyAlive(host, port)
             }
-            _state.value = _state.value.copy(isAlive = alive)
+            _state.value = _state.value.copy(
+                isAlive = alive,
+                lastError = if (alive) null else
+                    "Proxy unreachable at $host:$port (connection refused, " +
+                        "timed out, or no route).",
+            )
         }
+    }
+
+    /**
+     * Starts a periodic liveness probe (every 15 seconds) while the tunnel
+     * is active. Idempotent: calling it while the loop is already running
+     * is a no-op.
+     */
+    private fun startAlivePolling() {
+        if (pollingJob?.isActive == true) return
+        pollingJob = viewModelScope.launch {
+            while (isActive) {
+                checkAlive()
+                delay(ALIVE_POLL_INTERVAL_MS)
+            }
+        }
+    }
+
+    /** Stops the periodic liveness probe (when the tunnel goes down). */
+    private fun stopAlivePolling() {
+        pollingJob?.cancel()
+        pollingJob = null
     }
 
     fun selectProfile(id: String) {
@@ -230,5 +323,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             raw.split("|").mapNotNull { it.trim().takeIf { s -> s.isNotEmpty() } }
         }
         return ids.map { ProfileEntry(it, profileNameFor(it)) }
+    }
+
+    companion object {
+        /** Interval between automatic liveness probes while the tunnel is up. */
+        private const val ALIVE_POLL_INTERVAL_MS = 15_000L
     }
 }

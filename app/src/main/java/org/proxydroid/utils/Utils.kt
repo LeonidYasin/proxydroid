@@ -42,6 +42,14 @@ object Utils {
     private val _connecting = MutableStateFlow(false)
     val connecting: StateFlow<Boolean> = _connecting.asStateFlow()
 
+    /**
+     * Last connection error reported by the VPN service, or null when there
+     * is nothing to show. The UI observes this so a failed connect never
+     * dies silently.
+     */
+    private val _lastError = MutableStateFlow<String?>(null)
+    val lastError: StateFlow<String?> = _lastError.asStateFlow()
+
     @JvmStatic
     fun isWorking(): Boolean = _working.value
 
@@ -56,6 +64,14 @@ object Utils {
     @JvmStatic
     fun setConnecting(connecting: Boolean) {
         _connecting.value = connecting
+    }
+
+    @JvmStatic
+    fun getLastError(): String? = _lastError.value
+
+    @JvmStatic
+    fun setLastError(message: String?) {
+        _lastError.value = message
     }
 
     @JvmStatic

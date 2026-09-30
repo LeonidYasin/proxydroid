@@ -52,15 +52,47 @@ object NetworkUtils {
      *
      * Must be called from a background thread / coroutine on Dispatchers.IO.
      */
-    fun isProxyAlive(host: String, port: Int, timeoutMs: Int = 2000): Boolean {
-        if (host.isBlank() || port !in 1..65535) return false
+    /**
+     * Outcome of a liveness probe. Distinguishes failure modes so callers
+     * can show a meaningful message instead of a bare false.
+     */
+    enum class ProbeResult { ALIVE, REFUSED, TIMEOUT, UNKNOWN_HOST, NO_ROUTE, BAD_INPUT }
+
+    /**
+     * Quick liveness probe for an upstream proxy. Opens a TCP connection to
+     * [host]:[port] with the given timeout and immediately closes it.
+     *
+     * Returns [ProbeResult.ALIVE] on success, otherwise a reason-specific
+     * failure value:
+     *   - REFUSED      : nothing listening on the port
+     *   - TIMEOUT      : no response within [timeoutMs]
+     *   - UNKNOWN_HOST : DNS resolution failed
+     *   - NO_ROUTE     : host/network unreachable
+     *   - BAD_INPUT    : blank host or port out of range
+     *
+     * Must be called from a background thread / coroutine on Dispatchers.IO.
+     */
+    fun probeProxy(host: String, port: Int, timeoutMs: Int = 2000): ProbeResult {
+        if (host.isBlank() || port !in 1..65535) return ProbeResult.BAD_INPUT
         return try {
             Socket().use { socket ->
                 socket.connect(InetSocketAddress(host, port), timeoutMs)
-                true
+                ProbeResult.ALIVE
             }
+        } catch (_: java.net.ConnectException) {
+            ProbeResult.REFUSED
+        } catch (_: java.net.SocketTimeoutException) {
+            ProbeResult.TIMEOUT
+        } catch (_: java.net.UnknownHostException) {
+            ProbeResult.UNKNOWN_HOST
+        } catch (_: java.net.NoRouteToHostException) {
+            ProbeResult.NO_ROUTE
         } catch (_: Exception) {
-            false
+            ProbeResult.BAD_INPUT
         }
     }
+
+    /** Convenience wrapper for callers that only need a boolean. */
+    fun isProxyAlive(host: String, port: Int, timeoutMs: Int = 2000): Boolean =
+        probeProxy(host, port, timeoutMs) == ProbeResult.ALIVE
 }

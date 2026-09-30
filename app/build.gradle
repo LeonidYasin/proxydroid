@@ -47,6 +47,12 @@ android {
         versionCode vCode
         versionName vName
 
+        // Surfaced in the About screen so the installed APK is identifiable.
+        // BUILD_SHA comes from CI (GITHUB_SHA) when available; falls back to
+        // "dev" for local builds.
+        buildConfigField "String", "VERSION_NAME", "\"${vName}\""
+        buildConfigField "String", "BUILD_SHA", "\"${System.getenv('GITHUB_SHA') ?: 'dev'}\""
+
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {
@@ -86,6 +92,7 @@ android {
 
     buildFeatures {
         compose true
+        buildConfig true
     }
 
     composeOptions {
