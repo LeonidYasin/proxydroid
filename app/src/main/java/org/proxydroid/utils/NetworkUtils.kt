@@ -96,4 +96,3 @@ object NetworkUtils {
     fun isProxyAlive(host: String, port: Int, timeoutMs: Int = 2000): Boolean =
         probeProxy(host, port, timeoutMs) == ProbeResult.ALIVE
 }
-}
