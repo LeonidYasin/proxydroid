@@ -111,7 +111,15 @@ class ProxyDroidVpnService : VpnService() {
             }
         }
 
-        startForeground(NOTIFICATION_ID, createNotification())
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(
+                NOTIFICATION_ID,
+                createNotification(),
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, createNotification())
+        }
 
         vpnJob?.cancel()
         vpnJob = serviceScope.launch { startVpn() }
