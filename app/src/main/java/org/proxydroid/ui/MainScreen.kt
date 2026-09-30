@@ -253,23 +253,36 @@ private fun LivenessIndicator(state: MainUiState, onCheckAlive: () -> Unit) {
         false -> Color(0xFFE53935) to "Proxy not responding"
         null -> Color(0xFF9E9E9E) to "Proxy not checked yet"
     }
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            modifier = Modifier
-                .size(8.dp)
-                .background(dotColor, CircleShape),
-        )
-        Spacer(Modifier.width(6.dp))
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodySmall,
-        )
-        Spacer(Modifier.width(8.dp))
-        TextButton(
-            onClick = onCheckAlive,
-            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
-        ) {
-            Text("Check", style = MaterialTheme.typography.bodySmall)
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .background(dotColor, CircleShape),
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Spacer(Modifier.width(8.dp))
+            TextButton(
+                onClick = onCheckAlive,
+                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+            ) {
+                Text("Check", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        // Show the concrete reason of the last failure instead of dying
+        // silently: e.g. "no gateway on cellular" or "connection refused".
+        val err = state.lastError
+        if (err != null) {
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = err,
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFFE53935),
+            )
         }
     }
 }
