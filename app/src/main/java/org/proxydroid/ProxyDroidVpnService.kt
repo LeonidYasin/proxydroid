@@ -130,7 +130,7 @@ class ProxyDroidVpnService : VpnService() {
             startForeground(
                 NOTIFICATION_ID,
                 createNotification(),
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
             )
         } else {
             startForeground(NOTIFICATION_ID, createNotification())
