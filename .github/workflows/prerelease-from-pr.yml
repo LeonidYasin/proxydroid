@@ -4,9 +4,10 @@ name: Pre-release from PR
 # be downloaded and installed BEFORE the PR is merged.
 #
 # The tag is FIXED per version: vMAJOR.MINOR.PATCH-rc (no run number).
-# Each new build overwrites the APK inside the same release (gh release upload
-# --clobber), so Releases always shows exactly ONE current pre-release for the
-# branch instead of a growing rc1, rc2, ... rcN pile.
+# Each new build re-points the tag onto the current commit and overwrites the
+# APK inside the same release (gh release upload --clobber), so Releases always
+# shows exactly ONE current pre-release for the branch, with a fresh commit SHA
+# and a fresh publishedAt instead of a growing rc1, rc2, ... rcN pile.
 #
 # Trigger: manual dispatch, or adding the 'publish-rc' label to a PR.
 
