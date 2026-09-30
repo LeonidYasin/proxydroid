@@ -106,6 +106,20 @@ class ProxyDroidVpnService : VpnService() {
                 if (!gw.isNullOrEmpty()) {
                     Log.i(TAG, "useGatewayAsHost: replacing host='$host' with gateway='$gw'")
                     host = gw
+                } else if (host.isBlank()) {
+                    // No gateway (typical on cellular) and no manual host:
+                    // there is nothing to connect to. Fail fast with a clear
+                    // message instead of starting a tunnel to an empty host.
+                    val msg = "Auto-gateway is enabled, but this network has no " +
+                        "gateway (cellular?). Set the proxy host manually or " +
+                        "connect to Wi-Fi."
+                    Log.e(TAG, msg)
+                    Utils.setLastError(msg)
+                    Utils.setConnecting(false)
+                    Utils.setWorking(false)
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopSelf()
+                    return START_NOT_STICKY
                 } else {
                     Log.w(TAG, "useGatewayAsHost: gateway unavailable, keeping host='$host'")
                 }
