@@ -23,6 +23,7 @@ import org.proxydroid.ui.MainScreen
 import org.proxydroid.ui.MainViewModel
 import org.proxydroid.ui.theme.ProxyDroidTheme
 import org.proxydroid.utils.ProxyController
+import org.proxydroid.utils.Utils
 
 class ProxyDroid : ComponentActivity() {
 
