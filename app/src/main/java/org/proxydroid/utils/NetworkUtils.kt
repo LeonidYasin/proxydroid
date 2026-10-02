@@ -10,6 +10,11 @@ package org.proxydroid.utils
 
 import android.content.Context
 import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.os.SystemClock
+import kotlinx.coroutines.delay
+import java.net.Inet4Address
 import java.net.InetSocketAddress
 import java.net.Socket
 
@@ -25,15 +30,71 @@ import java.net.Socket
  * exposes the gateway to non-system apps.
  */
 object NetworkUtils {
+    @Suppress("DEPRECATION") // allNetworks is deprecated on API 31+ but still works
     fun getGatewayIp(context: Context): String? {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE)
             as? ConnectivityManager ?: return null
-        val network = cm.activeNetwork ?: return null
-        val lp = cm.getLinkProperties(network) ?: return null
-        return lp.routes
-            .firstOrNull { it.destination?.prefixLength == 0 }
-            ?.gateway
-            ?.hostAddress
+
+        // The *active* network turns into the VPN itself as soon as our own
+        // tunnel is up (and it has no gateway), so look at every non-VPN
+        // network, active one first. Cellular is only accepted when it is the
+        // active network; Wi-Fi / Ethernet are always candidates.
+        val active = cm.activeNetwork
+        val candidates = LinkedHashSet<Network>()
+        if (active != null) candidates.add(active)
+        candidates.addAll(cm.allNetworks)
+
+        for (network in candidates) {
+            val caps = cm.getNetworkCapabilities(network) ?: continue
+            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) continue
+            val local = caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+            if (!local && network != active) continue
+
+            val lp = cm.getLinkProperties(network) ?: continue
+            // IPv4 only: an IPv6 default gateway is a link-local fe80:: address
+            // with a scope id and is not usable as a proxy host.
+            val gw = lp.routes
+                .firstOrNull { it.isDefaultRoute && it.gateway is Inet4Address }
+                ?.gateway
+                ?.hostAddress
+            if (!gw.isNullOrEmpty()) return gw
+        }
+        return null
+    }
+
+    /**
+     * Waits until the upstream proxy is reachable. Meant for boot / Always-on
+     * VPN starts, where the Wi-Fi link (and therefore the gateway) comes up
+     * tens of seconds after BOOT_COMPLETED.
+     *
+     * Each round resolves the host (gateway when [useGateway] is set, falling
+     * back to [manualHost]) and probes it with a TCP connect. Returns the
+     * reachable host, or null when [timeoutMs] elapsed.
+     *
+     * Must run on a background dispatcher (it blocks in socket connect).
+     */
+    suspend fun awaitProxyReady(
+        context: Context,
+        manualHost: String,
+        useGateway: Boolean,
+        port: Int,
+        timeoutMs: Long = 180_000L,
+        intervalMs: Long = 2_000L,
+    ): String? {
+        val deadline = SystemClock.elapsedRealtime() + timeoutMs
+        while (true) {
+            val host = if (useGateway) {
+                getGatewayIp(context)?.takeIf { it.isNotEmpty() } ?: manualHost
+            } else {
+                manualHost
+            }
+            if (host.isNotBlank() && probeProxy(host, port, 2000) == ProbeResult.ALIVE) {
+                return host
+            }
+            if (SystemClock.elapsedRealtime() >= deadline) return null
+            delay(intervalMs)
+        }
     }
 
     /**

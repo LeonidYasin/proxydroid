@@ -26,7 +26,9 @@ import android.content.Context
 import android.content.Intent
 import android.net.VpnService
 import android.os.Build
+import android.os.Bundle
 import android.os.ParcelFileDescriptor
+import android.preference.PreferenceManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.CoroutineScope
@@ -35,7 +37,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.proxydroid.utils.NetworkUtils
+import org.proxydroid.utils.ProxyController
 import org.proxydroid.utils.Tun2SocksHelper
 import org.proxydroid.utils.Utils
 
@@ -43,6 +48,9 @@ class ProxyDroidVpnService : VpnService() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var vpnJob: Job? = null
+
+    /** Serialises (re)starts so two start intents never race on the tun fd. */
+    private val startMutex = Mutex()
 
 
     companion object {
@@ -64,6 +72,7 @@ class ProxyDroidVpnService : VpnService() {
     private var proxyType: String = "socks5"
     private var proxyApps: String = ""
     private var isBypassApps: Boolean = false
+    private var useGatewayAsHost: Boolean = false
 
     override fun onCreate() {
         super.onCreate()
@@ -71,13 +80,9 @@ class ProxyDroidVpnService : VpnService() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent == null) {
-            stopSelf()
-            return START_NOT_STICKY
-        }
-
-        if (intent.action == ACTION_STOP) {
+        if (intent?.action == ACTION_STOP) {
             Log.d(TAG, "ACTION_STOP received")
+            vpnJob?.cancel()
             stopVpn()
             Utils.setWorking(false)
             Utils.setConnecting(false)
@@ -86,60 +91,139 @@ class ProxyDroidVpnService : VpnService() {
             return START_NOT_STICKY
         }
 
-        val bundle = intent.extras
-        if (bundle != null) {
-            host = bundle.getString("host", "")
-            port = bundle.getInt("port", 0)
-            user = bundle.getString("user", "")
-            password = bundle.getString("password", "")
-            proxyType = bundle.getString("proxyType", "socks5")
-            proxyApps = bundle.getString("proxyApps", "")
-            isBypassApps = bundle.getBoolean("isBypassApps", false)
-
-            // Auto-gateway: when set, ignore the manually configured host and
-            // use the current network's default gateway as the upstream proxy
-            // host instead. Useful when sharing a local proxy over a Wi-Fi
-            // hotspot (e.g. proxy listening on the phone itself at the
-            // hotspot gateway address like 192.168.43.1).
-            if (bundle.getBoolean("useGatewayAsHost", false)) {
-                val gw = NetworkUtils.getGatewayIp(this)
-                if (!gw.isNullOrEmpty()) {
-                    Log.i(TAG, "useGatewayAsHost: replacing host='$host' with gateway='$gw'")
-                    host = gw
-                } else if (host.isBlank()) {
-                    // No gateway (typical on cellular) and no manual host:
-                    // there is nothing to connect to. Fail fast with a clear
-                    // message instead of starting a tunnel to an empty host.
-                    val msg = "Auto-gateway is enabled, but this network has no " +
-                        "gateway (cellular?). Set the proxy host manually or " +
-                        "connect to Wi-Fi."
-                    Log.e(TAG, msg)
-                    Utils.setLastError(msg)
-                    Utils.setConnecting(false)
-                    Utils.setWorking(false)
-                    stopForeground(STOP_FOREGROUND_REMOVE)
-                    stopSelf()
-                    return START_NOT_STICKY
-                } else {
-                    Log.w(TAG, "useGatewayAsHost: gateway unavailable, keeping host='$host'")
-                }
-            }
+        // Config source:
+        //  - explicit extras: started from the UI or from our boot receiver;
+        //  - otherwise the saved profile. That covers Android's Always-on VPN
+        //    (the system starts the service with action android.net.VpnService
+        //    and no extras) and START_STICKY restarts (null intent). Previously
+        //    both cases ended with an empty host / port 0 or an immediate stop.
+        val extras = intent?.extras
+        if (extras != null && extras.containsKey("host")) {
+            loadFromBundle(extras)
+        } else {
+            loadFromSavedProfile()
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                NOTIFICATION_ID,
-                createNotification(),
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, createNotification())
+        // Background starts (boot, Always-on, sticky restart): the network is
+        // typically not up yet, so wait for the proxy instead of failing.
+        val waitForNetwork = intent == null ||
+            intent.action == VpnService.SERVICE_INTERFACE ||
+            intent.getBooleanExtra(ProxyController.EXTRA_WAIT_FOR_NETWORK, false)
+
+        // Must happen right away: a service started via startForegroundService()
+        // has 5 seconds to call startForeground().
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    createNotification(),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, createNotification())
+            }
+        } catch (t: Throwable) {
+            failAndStop("Cannot start foreground service: ${t.javaClass.simpleName}: ${t.message}")
+            return START_NOT_STICKY
         }
 
         vpnJob?.cancel()
-        vpnJob = serviceScope.launch { startVpn() }
+        vpnJob = serviceScope.launch {
+            startMutex.withLock {
+                if (!resolveUpstream(waitForNetwork)) return@withLock
+                stopVpn() // idempotent restart: drop any previous tunnel first
+                startVpn()
+            }
+        }
 
         return START_STICKY
+    }
+
+    private fun loadFromBundle(bundle: Bundle) {
+        host = bundle.getString("host", "")
+        port = bundle.getInt("port", 0)
+        user = bundle.getString("user", "")
+        password = bundle.getString("password", "")
+        proxyType = bundle.getString("proxyType", "socks5")
+        proxyApps = bundle.getString("proxyApps", "")
+        isBypassApps = bundle.getBoolean("isBypassApps", false)
+        useGatewayAsHost = bundle.getBoolean("useGatewayAsHost", false)
+    }
+
+    private fun loadFromSavedProfile() {
+        val profile = Profile().also {
+            it.getProfile(PreferenceManager.getDefaultSharedPreferences(this))
+        }
+        host = profile.host
+        port = profile.port
+        user = profile.user
+        password = profile.password
+        proxyType = profile.proxyType
+        proxyApps = profile.proxyApps
+        isBypassApps = profile.isBypassApps
+        useGatewayAsHost = profile.useGatewayAsHost
+    }
+
+    /**
+     * Works out the upstream host. Returns false (after cleaning up) when the
+     * proxy cannot be used.
+     *
+     * Auto-gateway: when set, the manually configured host is replaced by the
+     * current network's default gateway (e.g. 192.168.43.1 when sharing a
+     * local proxy over a Wi-Fi hotspot).
+     */
+    private suspend fun resolveUpstream(waitForNetwork: Boolean): Boolean {
+        if (port !in 1..65535) {
+            failAndStop("Proxy port is not configured. Open ProxyDroid and set a valid profile.")
+            return false
+        }
+        Utils.setConnecting(true)
+
+        if (waitForNetwork) {
+            Log.i(TAG, "Waiting for proxy (gateway=$useGatewayAsHost, host='$host', port=$port)")
+            val reachable = NetworkUtils.awaitProxyReady(this, host, useGatewayAsHost, port)
+            if (reachable == null) {
+                failAndStop(
+                    "Proxy was not reachable within 3 minutes after start " +
+                        "(is Wi-Fi connected and the proxy running?). Start it manually from the app."
+                )
+                return false
+            }
+            Log.i(TAG, "Proxy reachable at $reachable:$port")
+            host = reachable
+            return true
+        }
+
+        if (useGatewayAsHost) {
+            val gw = NetworkUtils.getGatewayIp(this)
+            if (!gw.isNullOrEmpty()) {
+                Log.i(TAG, "useGatewayAsHost: replacing host='$host' with gateway='$gw'")
+                host = gw
+            } else if (host.isBlank()) {
+                // No gateway (typical on cellular) and no manual host:
+                // there is nothing to connect to. Fail fast with a clear
+                // message instead of starting a tunnel to an empty host.
+                failAndStop(
+                    "Auto-gateway is enabled, but this network has no " +
+                        "gateway (cellular?). Set the proxy host manually " +
+                        "or connect to Wi-Fi."
+                )
+                return false
+            } else {
+                Log.w(TAG, "useGatewayAsHost: gateway unavailable, keeping host='$host'")
+            }
+        }
+        return true
+    }
+
+    private fun failAndStop(msg: String) {
+        Log.e(TAG, msg)
+        Utils.setLastError(msg)
+        Utils.setConnecting(false)
+        Utils.setWorking(false)
+        stopVpn()
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
     }
 
     override fun onDestroy() {
