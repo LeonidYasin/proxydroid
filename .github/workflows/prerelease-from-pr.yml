@@ -145,6 +145,7 @@ jobs:
           SHORT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
+          BUILD_SHA="$(git rev-parse HEAD)"
           SHORT_SHA="${BUILD_SHA:0:8}"
           NOTES="Rolling pre-release APK for testing before merge.
           Version: ${VERSION}
