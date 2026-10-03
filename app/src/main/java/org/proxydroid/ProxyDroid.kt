@@ -12,6 +12,7 @@ package org.proxydroid
 import android.content.Intent
 import android.net.VpnService
 import android.os.Bundle
+import android.preference.PreferenceManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -19,6 +20,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.core.content.ContextCompat
 import org.proxydroid.ui.MainScreen
 import org.proxydroid.ui.MainViewModel
 import org.proxydroid.ui.theme.ProxyDroidTheme
@@ -33,11 +35,7 @@ class ProxyDroid : ComponentActivity() {
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == RESULT_OK) {
-            val extras = ProxyController.buildExtras(viewModel.state.value.profile)
-            Utils.setLastError(null)
-            startService(
-                Intent(this, ProxyDroidVpnService::class.java).putExtras(extras)
-            )
+            launchService()
         }
     }
 
@@ -88,12 +86,25 @@ class ProxyDroid : ComponentActivity() {
         if (consent != null) {
             vpnConsentLauncher.launch(consent)
         } else {
-            val extras = ProxyController.buildExtras(viewModel.state.value.profile)
-            Utils.setLastError(null)
-            startService(
-                Intent(this, ProxyDroidVpnService::class.java).putExtras(extras)
-            )
+            launchService()
         }
+    }
+
+    /**
+     * Reads the profile straight from SharedPreferences: when the activity is
+     * opened by the "tap to start" notification, MainViewModel.reload() has not
+     * finished yet and its state still holds an empty default profile.
+     */
+    private fun launchService() {
+        val profile = Profile().also {
+            it.getProfile(PreferenceManager.getDefaultSharedPreferences(this))
+        }
+        Utils.setLastError(null)
+        ContextCompat.startForegroundService(
+            this,
+            Intent(this, ProxyDroidVpnService::class.java)
+                .putExtras(ProxyController.buildExtras(profile))
+        )
     }
 
     private fun stopVpn() {

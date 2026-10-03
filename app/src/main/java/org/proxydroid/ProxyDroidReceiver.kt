@@ -34,12 +34,21 @@ class ProxyDroidReceiver : BroadcastReceiver() {
         val action = intent.action ?: return
         if (action !in HANDLED_ACTIONS) return
 
+        // Credential-encrypted storage (where our SharedPreferences live) is
+        // not readable until the first unlock. The receiver is not
+        // directBootAware, so this action is normally never delivered; the
+        // guard keeps it safe if that ever changes. BOOT_COMPLETED follows
+        // after unlock.
+        if (action == Intent.ACTION_LOCKED_BOOT_COMPLETED) return
+
         val settings = PreferenceManager.getDefaultSharedPreferences(context)
         val profile = Profile().apply { getProfile(settings) }
 
         if (profile.autoStartOnBoot) {
             Log.i(TAG, "Start-on-boot enabled: starting proxy for profile '${profile.name}' on $action")
-            ProxyController.startWithConsent(context, profile)
+            // The network (Wi-Fi / hotspot gateway) usually comes up well after
+            // BOOT_COMPLETED, so ask the service to wait for the proxy.
+            ProxyController.startWithConsent(context, profile, waitForNetwork = true)
         } else {
             Log.d(TAG, "Start-on-boot disabled for current profile; nothing to do on $action")
         }
