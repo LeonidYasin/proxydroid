@@ -30,7 +30,7 @@ object DeviceDiagnostics {
         val caps = network?.let { cm?.getNetworkCapabilities(it) }
         val lp = network?.let { cm?.getLinkProperties(it) }
         val routing = if (active) Utils.activeRouting.value else null
-        val lines = mutableListOf("App: v${BuildConfig.VERSION_NAME} · build ${BuildConfig.BUILD_RUN_ID} · ${BuildConfig.BUILD_SHA.take(12)}",
+        val lines = mutableListOf("App: v${BuildConfig.VERSION_NAME} · build ${BuildConfig.BUILD_RUN_ID} · ${BuildConfig.BUILD_SHA.take(12)} · ${if (BuildConfig.DEBUG) "DEBUG" else "RELEASE"}",
             "Android ${Build.VERSION.RELEASE} / API ${Build.VERSION.SDK_INT}; model ${Build.MANUFACTURER} ${Build.MODEL}",
             "Scope: ${if (active) "ACTUAL active service upstream" else "CONFIGURED profile; VPN is not running — no TUN test"}",
             "Physical network: ${if (network == null) "none found" else network.toString()}; interface ${lp?.interfaceName ?: "unknown"}; MTU ${lp?.mtu ?: 0}")

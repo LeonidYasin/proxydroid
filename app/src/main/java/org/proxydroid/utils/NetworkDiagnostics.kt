@@ -47,6 +47,7 @@ data class DiagnosticReport(val kind: DiagnosticKind, val endpoint: String, val 
             val dns = proxy.filter { it.target.doh }
             val direct = results.filter { it.target.direct }
             val advice = linkedSetOf<String>()
+            if (proxy.any { it.code in setOf("HTTP_HEADERS_LIMIT", "HTTP_LINE_LIMIT", "DUPLICATE_HTTP_FRAMING") }) advice += "Ответ не уложился в безопасные limits/правила диагностического HTTP-парсера. Это не доказательство мёртвого порта или TLS; сравните с реальным браузером и сохраните код ошибки."
             if (results.any { it.code == "CHECK_DEADLINE" }) advice += "Общий лимит времени исчерпан для части целей: это незавершённая проверка, не доказательство мёртвого порта. Повторите на стабильной сети; завершённые цели сохранены."
             if (proxy.any { it.code == "BAD_INPUT_OR_PROTOCOL" && !it.tcpReached }) advice += "Проверьте заполнение Host, Port 1..65535 и поддерживаемый тип прокси. Некорректные входные данные не являются доказательством отказа источника."
             if (proxy.any { it.code == "DNS_LOOKUP_FAILED" }) advice += "Приставка не разрешила имя HOST прокси: проверьте Host, DNS сети и смену IP/шлюза. До соединения с прокси нельзя оценить DNS удалённого сайта."
@@ -59,7 +60,7 @@ data class DiagnosticReport(val kind: DiagnosticKind, val endpoint: String, val 
             if (kind == DiagnosticKind.INTERNET && web.any { it.httpStatus == 200 || (it.httpStatus ?: 0) in 300..399 }) advice += "Тест /generate_204 ожидал 204, но получил страницу/redirect: проверьте captive portal или ограничения этого test endpoint. Полученный HTTP-ответ сам по себе не означает мёртвый TCP-порт."
             if (web.any { it.success } && web.any { !it.success }) advice += "Недоступна лишь часть целей: это не означает, что весь прокси мёртв. Сравните домены, фильтрацию, перегрузку и ограничения IP источника."
             if (proxy.any { it.httpStatus == 403 || it.httpStatus == 429 }) advice += "Сайт вернул HTTP 403/429 уже после CONNECT/TLS: HTTPS-путь существует, но сайт ограничивает запросы или IP источника. Перезагрузка приставки/очистка кэша обычно не меняет серверное ограничение."
-            if (direct.any { it.success } && web.none { it.success }) advice += "Прямой контрольный HTTPS прошёл в выбранной сети приставки, а через прокси — нет: прежде перезагрузки приставки проверьте источник, его правила/выход и путь приставка→прокси. Это всё ещё не независимое доказательство исправности native туннеля."
+            if (direct.any { it.success } && web.none { it.success } && web.any { it.code !in setOf("CHECK_DEADLINE", "HTTP_HEADERS_LIMIT", "HTTP_LINE_LIMIT", "DUPLICATE_HTTP_FRAMING") }) advice += "Прямой контрольный HTTPS прошёл в выбранной сети приставки, а через прокси — нет: прежде перезагрузки приставки проверьте источник, его правила/выход и путь приставка→прокси. Это всё ещё не независимое доказательство исправности native туннеля."
             if (direct.isNotEmpty() && direct.none { it.success } && web.none { it.success }) advice += "Не прошли ни прямой контроль, ни сайты через прокси: сначала проверьте физическую сеть, captive portal и часы приставки; затем тот же источник с другого устройства. Прямые сайты тоже могут блокироваться — только по этим результатам нельзя назначить виновником приставку или источник."
             if (web.any { it.success }) advice += "Если upstream-проверки проходят, а реальные приложения всё равно не работают: проверьте ФАКТИЧЕСКИЙ allow/bypass список, результаты DoH, неподдерживаемые UDP/QUIC и полный IPv6. Один раз переподключите VPN, чтобы пересоздать native-состояние. Успех upstream не доказывает работу TUN и native DNS."
             if (kind == DiagnosticKind.YOUTUBE) advice += "Проверки сайта YouTube и миниатюры отдельно от кнопки Open YouTube. Убедитесь, что установленный TV/phone клиент включён в VPN. Видео использует дополнительные googlevideo/CDN/API адреса; успешная миниатюра не является проверкой воспроизведения."
@@ -77,7 +78,12 @@ internal class ProbeSockets {
         sockets.add(socket)
         if (closed.get()) { runCatching { socket.close() }; throw java.net.SocketException("Probe cancelled") }
     }
-    fun close() { closed.set(true); sockets.forEach { runCatching { it.close() } }; sockets.clear() }
+    fun close() {
+        closed.set(true)
+        // Close underlying TCP FIRST: SSLSocket.close can otherwise wait behind an in-flight handshake.
+        sockets.filterNot { it is javax.net.ssl.SSLSocket }.forEach { runCatching { it.close() } }
+        sockets.forEach { runCatching { it.close() } }; sockets.clear()
+    }
 }
 
 object NetworkDiagnostics {
