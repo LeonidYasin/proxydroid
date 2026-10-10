@@ -17,6 +17,7 @@ def vName  = "${vMajor}.${vMinor}.${vPatch}"
 def vCode  = vMajor * 10000 + vMinor * 100 + vPatch
 
 // --- Signing / local overrides -----------------------------------------------
+// CI secrets are read from the environment, never written to local.properties.
 def localProps = new Properties()
 def localPropsFile = rootProject.file('local.properties')
 if (localPropsFile.exists()) {
@@ -30,12 +31,14 @@ android {
 
     signingConfigs {
         release {
-            def keystorePath = localProps.getProperty('KEYSTORE_PATH')
+            def keystorePath = System.getenv('KEYSTORE_PATH') ?: localProps.getProperty('KEYSTORE_PATH')
             if (keystorePath) {
                 storeFile file(keystorePath)
-                storePassword localProps.getProperty('KEYSTORE_PASSWORD')
-                keyAlias localProps.getProperty('KEY_ALIAS')
-                keyPassword localProps.getProperty('KEY_PASSWORD')
+                storePassword (System.getenv('KEYSTORE_PASSWORD') ?: localProps.getProperty('KEYSTORE_PASSWORD'))
+                keyAlias (System.getenv('KEY_ALIAS') ?: localProps.getProperty('KEY_ALIAS'))
+                keyPassword (System.getenv('KEY_PASSWORD') ?: localProps.getProperty('KEY_PASSWORD'))
+                enableV1Signing true
+                enableV2Signing true
             }
         }
     }
@@ -51,7 +54,7 @@ android {
         // BUILD_SHA comes from CI (GITHUB_SHA) when available; falls back to
         // "dev" for local builds.
         buildConfigField "String", "VERSION_NAME", "\"${vName}\""
-        buildConfigField "String", "BUILD_SHA", "\"${System.getenv('GITHUB_SHA') ?: 'dev'}\""
+        buildConfigField "String", "BUILD_SHA", "\"${System.getenv('BUILD_SHA') ?: System.getenv('GITHUB_SHA') ?: 'dev'}\""
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
@@ -64,9 +67,9 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            if (localProps.getProperty('KEYSTORE_PATH')) {
-                signingConfig signingConfigs.release
-            }
+            // Always select the release signer: missing credentials must fail,
+            // never silently produce an unsigned APK or use the debug signer.
+            signingConfig signingConfigs.release
         }
     }
 

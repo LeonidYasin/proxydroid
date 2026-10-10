@@ -1,6 +1,7 @@
 name: Android Build
 
 on:
+  workflow_dispatch:
   pull_request:
     branches: [ main, master ]
   push:
@@ -98,7 +99,7 @@ jobs:
       run: python3 scripts/check_tv_contract.py
 
     - name: Build Debug APK
-      run: ./gradlew assembleDebug --stacktrace
+      run: ./gradlew assembleDebug assembleDebugAndroidTest --stacktrace
 
     - name: Upload Debug APK
       uses: actions/upload-artifact@v4

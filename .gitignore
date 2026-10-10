@@ -16,3 +16,9 @@ build/
 app/release
 __pycache__/
 *.pyc
+
+# Never commit private signing material.
+*.jks
+*.keystore
+*.p12
+*.pfx

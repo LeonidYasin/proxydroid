@@ -73,6 +73,15 @@ to the current VPN implementation. Not yet production-ready for unattended TV us
   because the Android SDK and NDK are absent. Android tests must be confirmed
   by CI and a physical TV before calling this device-tested.
 
+## GitHub Actions follow-up
+
+The initial limitation was local only. GitHub Actions run `38008256912` built the
+debug APK and passed the unit-test job for commit `372b836bde362b0e4d82c79640e842c65be8473f`.
+The SDK, NDK and Rust toolchain were available there. The gateway JVM tests therefore
+passed in the normal Android Gradle environment. Emulator execution was still queued
+at that snapshot. Later signing/build changes need their own run. See
+`docs/RELEASE_SIGNING.md` for the permanent release signing setup.
+
 ## TV installation and device checklist
 
 Install the regular APK through the package installer or `adb install -r`.
