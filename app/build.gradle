@@ -54,6 +54,9 @@ android {
         // BUILD_SHA comes from CI (GITHUB_SHA) when available; falls back to
         // "dev" for local builds.
         buildConfigField "String", "VERSION_NAME", "\"${vName}\""
+        buildConfigField "String", "BUILD_RUN_ID", "\"${System.getenv('GITHUB_RUN_ID') ?: 'local'}\""
+        buildConfigField "String", "BUILD_RUN_NUMBER", "\"${System.getenv('GITHUB_RUN_NUMBER') ?: 'local'}\""
+        buildConfigField "String", "BUILD_RUN_ATTEMPT", "\"${System.getenv('GITHUB_RUN_ATTEMPT') ?: '1'}\""
         buildConfigField "String", "BUILD_SHA", "\"${System.getenv('BUILD_SHA') ?: System.getenv('GITHUB_SHA') ?: 'dev'}\""
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"

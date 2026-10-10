@@ -109,7 +109,7 @@ fun MainScreen(
                     Column {
                         Text(stringRes(R.string.app_name))
                         Text(
-                            text = "v${BuildConfig.VERSION_NAME} · ${BuildConfig.BUILD_SHA.take(8)}",
+                            text = buildIdentityText(),
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
@@ -135,7 +135,7 @@ fun MainScreen(
                                 Column {
                                     Text("About")
                                     Text(
-                                        text = "v${BuildConfig.VERSION_NAME} · ${BuildConfig.BUILD_SHA.take(8)}",
+                                        text = buildIdentityText(),
                                         style = MaterialTheme.typography.bodySmall,
                                     )
                                 }
@@ -684,3 +684,9 @@ private fun ConfirmDialog(
 @Composable
 private fun stringRes(id: Int): String =
     androidx.compose.ui.res.stringResource(id = id)
+
+
+private fun buildIdentityText(): String =
+    "v${BuildConfig.VERSION_NAME} · ${BuildConfig.BUILD_TYPE} · " +
+        "build ${BuildConfig.BUILD_RUN_ID}/a${BuildConfig.BUILD_RUN_ATTEMPT} · " +
+        "g${BuildConfig.BUILD_SHA.take(12)}"

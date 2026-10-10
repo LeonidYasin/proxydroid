@@ -1,4 +1,6 @@
-name: Android Build
+name: ProxyDroid Android TV/Phone Debug and Tests
+run-name: >-
+  ProxyDroid · Android TV/Phone · universal · debug/test · ${{ github.ref_name }} · run ${{ github.run_id }} · attempt ${{ github.run_attempt }} · ${{ github.sha }}
 
 on:
   workflow_dispatch:
@@ -14,6 +16,12 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+
+    - name: Generate debug APK naming and source metadata
+      id: metadata
+      run: |
+        python3 -m unittest discover -s scripts -p test_build_metadata.py
+        python3 scripts/build_metadata.py --variant debug --output build-info.json --github-output "$GITHUB_OUTPUT"
 
     - name: Set up JDK 17
       uses: actions/setup-java@v4
@@ -99,13 +107,19 @@ jobs:
       run: python3 scripts/check_tv_contract.py
 
     - name: Build Debug APK
+      env:
+        BUILD_SHA: ${{ steps.metadata.outputs.sha }}
       run: ./gradlew assembleDebug assembleDebugAndroidTest --stacktrace
+
+    - name: Package consistently named Debug APK
+      run: python3 scripts/build_metadata.py --apk app/build/outputs/apk/debug/app-debug.apk --metadata build-info.json --dist dist
 
     - name: Upload Debug APK
       uses: actions/upload-artifact@v4
       with:
-        name: app-debug
-        path: app/build/outputs/apk/debug/app-debug.apk
+        name: ${{ steps.metadata.outputs.name }}
+        path: dist/
+        if-no-files-found: error
         retention-days: 7
 
   lint:

@@ -26,3 +26,6 @@ __pycache__/
 encrypted-signing-backup/
 .signing/
 github-secrets.json
+
+build-info.json
+dist/
