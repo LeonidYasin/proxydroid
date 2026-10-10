@@ -15,3 +15,6 @@ These smoke tests do not replace physical Android TV/ARM VPN data-plane testing.
 
 ARM32 APKs omit the other three native ABIs; universal APKs remain larger because
 they support ARM32, ARM64, x86 and x86_64. Both share package ID and signer.
+
+R8 is pinned to 8.3.37 to avoid the bundled 8.1 merged Java-resource input
+failure. AGP and the Rust Gradle plugin remain on their existing versions.

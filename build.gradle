@@ -17,6 +17,9 @@ buildscript {
         gradlePluginPortal()
     }
     dependencies {
+        // Override the bundled R8 8.1 resource-input bug without changing AGP
+        // or the Rust/JNI plugin integration. Pinned and release-smoke tested.
+        classpath "com.android.tools:r8:8.3.37"
         classpath "com.android.tools.build:gradle:${libs.versions.agp.get()}"
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:${libs.versions.kotlin.get()}"
         classpath "org.mozilla.rust-android-gradle:plugin:${libs.versions.rustAndroid.get()}"
