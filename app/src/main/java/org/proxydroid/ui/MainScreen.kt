@@ -261,6 +261,11 @@ private fun ConnectionCard(
                     secondaryStatus(state),
                     style = MaterialTheme.typography.bodyMedium,
                 )
+                // Gateway/connection errors must also be visible before connecting.
+                if (!on) state.lastError?.let { error ->
+                    Text(error, style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error)
+                }
                 // Liveness indicator: only meaningful while the tunnel is up.
                 if (on) {
                     Spacer(Modifier.height(4.dp))

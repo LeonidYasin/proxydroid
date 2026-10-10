@@ -131,7 +131,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (!enabled) return // Preserve the resolved host for optional manual editing.
         gatewayJob = viewModelScope.launch {
             val gateway = withContext(Dispatchers.IO) {
-                NetworkUtils.getGatewayIp(getApplication())
+                runCatching { NetworkUtils.getGatewayIp(getApplication()) }.getOrNull()
             }
             // Ignore a late answer after another toggle or profile selection.
             if (request != gatewayRequest || _state.value.currentProfileId != profileId ||
