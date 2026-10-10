@@ -1,10 +1,10 @@
 # Полный mind map проекта ProxyDroid
 
-Source version: **3.8.0** в рабочей ветке. Карта описывает модули/связи/границы реализации, а не подтверждает merge или успешный OEM device QA. [Интерактивная карта](MINDMAP.html) · [Архитектура](ARCHITECTURE.md) · [Roadmap](../ROADMAP.md).
+Source version: **3.8.1** в рабочей ветке. Карта описывает модули/связи/границы реализации, а не подтверждает merge или успешный OEM device QA. [Интерактивная карта](MINDMAP.html) · [Архитектура](ARCHITECTURE.md) · [Roadmap](../ROADMAP.md).
 
 ```mermaid
 mindmap
-  root((ProxyDroid 3.8.0))
+  root((ProxyDroid 3.8.1))
     UX · TV  ·  Phone
       Вход
         ProxyDroid activity · VPN consent/result · foreground start · MainScreen
@@ -107,7 +107,7 @@ mindmap
         upstream probe ≠ full TUN path/YouTube playback · Google block false negative · allow-list matters
     Обновления и release
       Updater UI
-        AppUpdateDialog / UpdateViewModel · Stable vs Test · progress/cancel
+        AppUpdateDialog / UpdateViewModel / full clickable APK path · Stable vs Test · progress/cancel
       Каталог
         ReleaseCatalog · no drafts/debug · channel consistency · trusted asset URLs · compatible ABI
       Download
@@ -115,9 +115,9 @@ mindmap
       APK trust
         actual package/version/minSDK/native ABI · current installed signer · downgrade refusal
       Установка
-        UpdateFileProvider scoped URI · Android unknown sources + installer confirmation · no silent install
+        UpdateFileProvider scoped URI · Android visible Activity + unknown sources resume + installer confirmation · no silent install
       Версия · имя
-        version.properties to 3.8.0 / 30800 · build_metadata.py to platform/ABI/channel/run/attempt/commit
+        version.properties to 3.8.1 / 30800 · build_metadata.py to platform/ABI/channel/run/attempt/commit
       CI
         android-build.yml build/unit/lint/blocking emulator · fixtures · exact-SHA publication gate
       Публикация
@@ -211,7 +211,7 @@ Software tests; real OEM reboot pending
 - **Риски:** Force stop · first open · revoked consent · another VPN · OEM power/autostart restrictions
 
 ### Интернет → YouTube
-Новая функция 3.8.0
+Новая функция 3.8.1
 
 - **Условие:** VPN working → actual activeUpstream snapshot → distinct internet check
 - **Транспорт:** ProxyTransport handshake · remote DNS · credentials only to configured proxy
@@ -225,12 +225,12 @@ Software tests; real OEM reboot pending
 ### Обновления и release
 Signed universal + ARM32
 
-- **Updater UI:** AppUpdateDialog / UpdateViewModel · Stable vs Test · progress/cancel
+- **Updater UI:** AppUpdateDialog / UpdateViewModel / full clickable APK path · Stable vs Test · progress/cancel
 - **Каталог:** ReleaseCatalog · no drafts/debug · channel consistency · trusted asset URLs · compatible ABI
 - **Download:** GitHubUpdater · HTTPS allowlisted redirects · private cache/updates · bounded bytes/checksum
 - **APK trust:** actual package/version/minSDK/native ABI · current installed signer · downgrade refusal
-- **Установка:** UpdateFileProvider scoped URI · Android unknown sources + installer confirmation · no silent install
-- **Версия/имя:** version.properties → 3.8.0 / 30800 · build_metadata.py → platform/ABI/channel/run/attempt/commit
+- **Установка:** UpdateFileProvider scoped URI · Android visible Activity + unknown sources resume + installer confirmation · no silent install
+- **Версия/имя:** version.properties → 3.8.1 / 30800 · build_metadata.py → platform/ABI/channel/run/attempt/commit
 - **CI:** android-build.yml build/unit/lint/blocking emulator · fixtures · exact-SHA publication gate
 - **Публикация:** release-apk.yml · pinned keystore · signature/zipalign/nondebug/ABI · draft then publish both APKs
 - **Автоматизация:** auto-tag-release.yml explicit dispatch · prerelease-from-pr label → artifacts, no rolling overwrite

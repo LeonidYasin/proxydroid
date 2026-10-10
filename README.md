@@ -2,7 +2,9 @@
 
 VPN-клиент, направляющий IPv4/TCP-трафик выбранных приложений через ваш SOCKS/HTTP-прокси. Root не требуется. Интерфейс Jetpack Compose поддерживает пульт/DPAD и телефоны.
 
-> Разрабатываемая версия ветки: **3.8.0**. Это не означает, что изменения уже в `main` или стабильном релизе. Готовые APK и точный коммит смотрите в [Releases](https://github.com/LeonidYasin/proxydroid/releases); изменения проходят [PR #12](https://github.com/LeonidYasin/proxydroid/pull/12). Статус CI: [Actions](https://github.com/LeonidYasin/proxydroid/actions).
+> Разрабатываемая версия ветки: **3.8.1**. Это не означает, что изменения уже в `main` или стабильном релизе. Готовые APK и точный коммит смотрите в [Releases](https://github.com/LeonidYasin/proxydroid/releases); изменения проходят [PR #12](https://github.com/LeonidYasin/proxydroid/pull/12). Статус CI: [Actions](https://github.com/LeonidYasin/proxydroid/actions).
+
+[Сайт проекта / документация](https://leonidyasin.github.io/proxydroid/) · [Скачать APK](https://github.com/LeonidYasin/proxydroid/releases)
 
 ## Быстрый старт
 
@@ -44,7 +46,9 @@ VPN-клиент, направляющий IPv4/TCP-трафик выбранн�
 
 **⋮ → Update app → Stable / Test → Check latest → Download APK → Install**. Stable выбирает опубликованные non-prerelease signed releases; Test — prerelease. Если подходящий signed stable не опубликован, канал честно сообщает отсутствие кандидата. Старые debug/unsigned релизы не предлагаются. На ARM32-совместимом устройстве предпочтителен меньший armeabi-v7a APK.
 
-Android подтверждает установку. Если запросит разрешение установки из ProxyDroid — разрешите, вернитесь и снова нажмите Install. Тот же ключ позволяет обновляться поверх release-signed APK; миграция с старой debug-подписи требует сохранения настроек и переустановки. [Подпись и релизы](docs/RELEASE_SIGNING.md).
+После завершения загрузки и проверки APK приложение открывает системный установщик из видимой Activity. Под прогрессом отображается **полный путь к скачанному APK** — нажмите на него пультом / DPAD OK или кнопку Install для повторной установки без повторной скачки. Путь не сокращается; это приватный cache приложения, а не общая папка Downloads.
+
+Android подтверждает установку. Если запросит разрешение установки из ProxyDroid — разрешите и вернитесь: установщик запускается снова. При необходимости нажмите путь APK или Install. При отсутствии разрешения/установщика выводится сообщение, проверенный файл сохраняется. Перед каждой попыткой повторно проверяются размер, SHA-256, пакет/версия/ABI и сертификат. Тот же ключ позволяет обновляться поверх release-signed APK; миграция с старой debug-подписи требует сохранения настроек и переустановки. [Подпись и релизы](docs/RELEASE_SIGNING.md).
 
 ## Сборка и тестирование
 
@@ -71,6 +75,8 @@ Release требует постоянного keystore и секретов ок�
 - [Boot autostart](docs/BOOT_AUTOSTART.md)
 - [Проверка интернета / YouTube](docs/INTERNET_YOUTUBE.md)
 - [TV review и тестирование](docs/ANDROID_TV_REVIEW.md)
+- [Обновление и установка APK](docs/APP_UPDATES.md)
+- [Сайт GitHub Pages](docs/GITHUB_PAGES.md)
 - [Подпись / release workflow](docs/RELEASE_SIGNING.md)
 - [Изменения](docs/CHANGELOG.md) · [Privacy policy](privacy_policy.md)
 - [Историческая сессия 2026-09-30](docs/SESSION-2026-09-30.md) — архив, не актуальный release guide.

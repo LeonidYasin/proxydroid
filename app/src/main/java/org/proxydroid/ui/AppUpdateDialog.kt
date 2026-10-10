@@ -16,6 +16,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.testTag
 import org.proxydroid.BuildConfig
 import org.proxydroid.update.UpdateChannel
 import org.proxydroid.update.UpdateUiState
@@ -31,7 +32,7 @@ fun AppUpdateDialog(
     onDismiss: () -> Unit,
 ) {
     if (!state.visible) return
-    val busy = state.checking || state.downloading
+    val busy = state.checking || state.downloading || state.installing
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Update from GitHub") },
@@ -56,6 +57,10 @@ fun AppUpdateDialog(
                     Text("Downloading: ${(state.progress * 100).toInt()}%")
                     LinearProgressIndicator(progress = state.progress, modifier = Modifier.fillMaxWidth())
                 }
+                if (state.installing) { Text("Verifying cached APK / opening installer…"); LinearProgressIndicator(Modifier.fillMaxWidth()) }
+                state.file?.let { file ->
+                    DownloadedApkLink(file.absolutePath, enabled = !busy, onInstall = onInstall)
+                }
                 state.message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                 state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
@@ -71,4 +76,17 @@ fun AppUpdateDialog(
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(if (busy) "Cancel" else "Close") } },
     )
+}
+
+/** Untruncated path is an explicit, DPAD-focusable installer action. */
+@Composable
+internal fun DownloadedApkLink(path: String, enabled: Boolean, onInstall: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("Downloaded APK — select the path to install", style = MaterialTheme.typography.bodySmall)
+        TextButton(onClick = onInstall, enabled = enabled,
+            modifier = Modifier.fillMaxWidth().testTag("downloaded-apk-path")) {
+            Text(path, style = MaterialTheme.typography.bodySmall, softWrap = true)
+        }
+        Text("Private app cache; other file managers cannot access this path. Installation uses a secure content URI.", style = MaterialTheme.typography.bodySmall)
+    }
 }

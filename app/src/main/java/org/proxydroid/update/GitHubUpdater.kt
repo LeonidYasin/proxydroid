@@ -140,19 +140,38 @@ class GitHubUpdater(private val context: Context) {
         return signatures.orEmpty().map { hex(MessageDigest.getInstance("SHA-256").digest(it.toByteArray())) }.toSet()
     }
 
-    /** User-triggered only. Returns true if Android's installer was opened. */
-    fun install(file: File): Boolean {
-        require(file.isFile && file.parentFile?.canonicalFile == File(context.cacheDir, "updates").canonicalFile) { "No verified APK is ready" }
-        if (Build.VERSION.SDK_INT >= 26 && !context.packageManager.canRequestPackageInstalls()) {
-            context.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    /** Re-check the cached bytes immediately before each installer attempt. */
+    fun verifyReady(file: File, build: UpdateBuild) {
+        require(file.isFile && file.canonicalFile.parentFile == File(context.cacheDir, "updates").canonicalFile) { "Downloaded APK is missing. Download it again." }
+        require(file.length() == build.offer.apk.size) { "Cached APK size changed. Download it again." }
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val bytes = ByteArray(32768)
+            while (true) { val n = input.read(bytes); if (n < 0) break; digest.update(bytes, 0, n) }
+        }
+        require(hex(digest.digest()) == build.sha256) { "Cached APK checksum changed. Installation refused." }
+        validatePackage(file, build)
+    }
+
+    fun canInstall(): Boolean = Build.VERSION.SDK_INT < 26 || context.packageManager.canRequestPackageInstalls()
+
+    /** Use the visible Activity, not Application + NEW_TASK (restricted on TV/OEM). */
+    fun install(activity: android.app.Activity, file: File): Boolean {
+        if (!canInstall()) {
+            try {
+                activity.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}")))
+            } catch (missing: android.content.ActivityNotFoundException) {
+                activity.startActivity(Intent(Settings.ACTION_SECURITY_SETTINGS))
+            }
             return false
         }
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.update-files", file)
-        context.startActivity(Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, "application/vnd.android.package-archive")
-            clipData = ClipData.newRawUri("ProxyDroid verified update", uri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-        })
+        try {
+            activity.startActivity(ApkInstallIntents.create(uri, Intent.ACTION_INSTALL_PACKAGE))
+        } catch (missing: android.content.ActivityNotFoundException) {
+            // Some TV installers only expose the generic APK VIEW handler.
+            activity.startActivity(ApkInstallIntents.create(uri, Intent.ACTION_VIEW))
+        }
         return true
     }
 

@@ -22,6 +22,9 @@ import androidx.compose.runtime.getValue
 import org.proxydroid.ui.AppUpdateDialog
 import org.proxydroid.update.UpdateViewModel
 import org.proxydroid.ui.MainScreen
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.launch
 import org.proxydroid.ui.MainViewModel
 import org.proxydroid.ui.theme.ProxyDroidTheme
 import org.proxydroid.utils.ProxyController
@@ -68,7 +71,15 @@ class ProxyDroid : ComponentActivity() {
                     onOpenYouTube = { if (!org.proxydroid.utils.YouTubeLauncher.open(this)) viewModel.reportConnectionError("YouTube/browser is not installed") },
                 )
                 AppUpdateDialog(updateState, updates::selectChannel, updates::check,
-                    updates::download, updates::install, updates::dismiss)
+                    updates::download, { updates.install(this) }, updates::dismiss)
+            }
+        }
+
+        lifecycleScope.launch {
+            repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
+                updates.state.collect { update ->
+                    if (update.visible && update.pendingInstall && !update.installing) updates.install(this@ProxyDroid)
+                }
             }
         }
 
@@ -90,6 +101,7 @@ class ProxyDroid : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         viewModel.reload()
+        updates.onResume(this)
     }
 
     private fun startVpn() {

@@ -1,0 +1,37 @@
+name: Project website / GitHub Pages
+on:
+  push:
+    branches: [main, fix/android-tv-dpad-default-port]
+    paths: ['README.md', 'AUTO_GATEWAY.md', 'ROADMAP.md', 'privacy_policy.md', 'docs/**', 'site/**', 'scripts/build_site.py', '.github/workflows/pages.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python -m pip install -r site/requirements.txt
+      - run: python scripts/build_site.py
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy project documentation
+        id: deployment
+        uses: actions/deploy-pages@v4

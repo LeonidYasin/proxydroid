@@ -42,3 +42,8 @@ CI результаты смотрите в Actions для **того же ко�
 General UDP/QUIC и полный IPv6 не реализованы; TLS tightening может перестать принимать self-signed HTTPS proxies. Проверка Google HTTPS endpoints может дать false negative при их блокировке. Current probe идёт через upstream, не весь TUN. Несколько физических сетей, Always-on/lockdown, Wi-Fi SSID automation, legacy NTLM/PAC и профильный bookkeeping требуют отдельных работ. Не обещать OEM autostart, если прошивка блокирует приложение.
 
 Рекомендация: проверять каждый RC на целевой приставке; не мержить PR автоматически только из-за зелёного CI.
+
+## Updater 3.8.1 device checklist
+
+- Проверить окончание скачки → installer; deny/allow unknown sources → возврат; отмена установки → повтор по полному пути; удалённый cache → ошибка; длинный путь + DPAD; отсутствие OEM installer → сообщение. APK остаётся приватным, FileProvider grant ограничен.
+- Instrumented: DownloadedApkLinkTest / ApkInstallIntentsTest проверяют UI/action/MIME/URI/grants, не фактическую OEM установку.

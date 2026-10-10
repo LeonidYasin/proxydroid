@@ -29,3 +29,6 @@ github-secrets.json
 
 build-info.json
 dist/
+
+# Generated static documentation website
+_site/
