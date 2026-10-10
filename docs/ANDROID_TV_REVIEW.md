@@ -127,3 +127,14 @@ filtering may also differ from standard Android TV behavior.
   produced: ARM32 target is `armeabi-v7a`.
 - Stable shows no candidate until a compatible signed non-prerelease release
   is published. Existing unsigned/debug releases are deliberately ignored.
+
+
+### Instrumented regression gate
+
+The connection focus request explicitly enters keyboard/DPAD input mode before
+requesting focus. Dialog editor focus is requested inside the dialog text slot,
+after the editor has been attached, not from the outer subcomposition.
+The emulator suite starts local authenticated/unauthenticated SOCKS5 and HTTP
+CONNECT proxies plus a local HTTP target. It is now blocking: focus/editor or
+protocol regressions cannot be silently treated as a green build. Tagged release
+publication waits for a successful Android workflow for the exact source commit.
