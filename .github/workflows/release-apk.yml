@@ -1,6 +1,6 @@
 name: ProxyDroid Android TV/Phone Signed Release
 run-name: >-
-  ProxyDroid · Android TV/Phone · universal · ${{ inputs.mode == 'backup' && 'encrypted backup' || 'signed release' }} · ${{ inputs.tag || github.ref_name }} · run ${{ github.run_id }} · attempt ${{ github.run_attempt }} · ${{ github.sha }}
+  ProxyDroid · Android TV/Phone · universal + ARM32 (armeabi-v7a) · ${{ inputs.mode == 'backup' && 'encrypted backup' || 'signed release' }} · ${{ inputs.tag || github.ref_name }} · run ${{ github.run_id }} · attempt ${{ github.run_attempt }} · ${{ github.sha }}
 
 # Signed release only. Manual dispatch without a tag builds an artifact, not a release.
 on:
@@ -73,6 +73,7 @@ jobs:
         python3 -m unittest discover -s scripts -p test_build_metadata.py
         python3 scripts/build_metadata.py --variant release --abi universal --output build-info.json --github-output "$GITHUB_OUTPUT"
         python3 scripts/build_metadata.py --variant release --abi armeabi-v7a --output build-info-armv7.json
+        echo "arm_name=$(python3 -c 'import json; print(json.load(open("build-info-armv7.json"))["stem"])')" >> "$GITHUB_OUTPUT"
         VERSION=$(python3 -c 'import json; print(json.load(open("build-info.json"))["version"])')
         BUILD_SHA=$(git rev-parse HEAD)
         TAG="$INPUT_TAG"
@@ -217,11 +218,19 @@ jobs:
         print('Verified separate compact ARM32 and universal packages with identical source/version identity.')
         PYSIZE
 
-    - name: Upload verified signed Release APK
+    - name: Upload verified signed universal Release APK
       uses: actions/upload-artifact@v4
       with:
         name: ${{ steps.release.outputs.name }}
-        path: dist/
+        path: dist/${{ steps.release.outputs.name }}.*
+        if-no-files-found: error
+        retention-days: 30
+
+    - name: Upload verified signed ARM32 Release APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.release.outputs.arm_name }}
+        path: dist/${{ steps.release.outputs.arm_name }}.*
         if-no-files-found: error
         retention-days: 30
 
