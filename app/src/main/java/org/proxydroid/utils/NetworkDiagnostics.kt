@@ -52,7 +52,7 @@ data class DiagnosticReport(val kind: DiagnosticKind, val endpoint: String, val 
             if (proxy.any { it.code == "BAD_INPUT_OR_PROTOCOL" && !it.tcpReached }) advice += "Проверьте заполнение Host, Port 1..65535 и поддерживаемый тип прокси. Некорректные входные данные не являются доказательством отказа источника."
             if (proxy.any { it.code == "DNS_LOOKUP_FAILED" }) advice += "Приставка не разрешила имя HOST прокси: проверьте Host, DNS сети и смену IP/шлюза. До соединения с прокси нельзя оценить DNS удалённого сайта."
             if (proxy.any { it.code in setOf("DNS_LOOKUP_FAILED", "NO_ROUTE", "CONNECTION_REFUSED_OR_UNREACHABLE", "TIMEOUT", "SOCKET_CLOSED_OR_RESET", "UNEXPECTED_EOF") && it.steps.any { step -> !step.ok && step.stage in setOf(ProbeStage.DNS, ProbeStage.TCP) } } && proxy.none { it.tcpReached }) advice += "TCP-порт прокси недоступен: проверьте Host/Port, Wi-Fi/Ethernet, изоляцию клиентов/firewall роутера или точки доступа; источник прокси должен слушать порт и не спать. Сравните с другим устройством в ТОЙ ЖЕ сети. Очистка кэша здесь не поможет."
-            if (proxy.any { it.code?.contains("AUTH") == true || it.code == "CONNECT_HTTP_407" || it.code == "WRONG_PROXY_PROTOCOL" }) advice += "Сначала проверьте тип прокси и авторизацию: SOCKS vs HTTP/HTTPS, Basic vs неподдерживаемый NTLM. Открытый порт может принадлежать другому сервису. Не сбрасывайте данные приложения и сертификаты."
+            if (proxy.any { it.code?.contains("AUTH") == true || it.code == "CONNECT_HTTP_407" || it.code == "WRONG_PROXY_PROTOCOL" || it.steps.any { step -> !step.ok && step.stage == ProbeStage.AUTH } }) advice += "Сначала проверьте тип прокси и авторизацию: SOCKS vs HTTP/HTTPS, Basic vs неподдерживаемый NTLM. Открытый порт может принадлежать другому сервису. Не сбрасывайте данные приложения и сертификаты."
             if (proxy.any { it.code?.startsWith("SOCKS5_REP_") == true || it.code?.startsWith("SOCKS4_REP_") == true || it.code?.startsWith("CONNECT_HTTP_") == true && it.code != "CONNECT_HTTP_407" }) advice += "Источник прокси отказал/не выполнил CONNECT. Смотрите его логи, правила доменов/назначений, DNS и собственный выход в интернет. REP / HTTP-код сужает причину, но не всегда отличает DNS от маршрута. Перезапускайте источник, если другие независимые клиенты тоже не работают либо логи указывают на зависший сервис."
             if (proxy.any { r -> r.steps.any { !it.ok && it.stage in setOf(ProbeStage.PROXY_TLS, ProbeStage.TARGET_TLS) } }) advice += "Сбой TLS: проверьте дату/время/часовой пояс приставки, HTTPS-vs-HTTP тип прокси, доверие/имя сертификата, перехват TLS и сбросы соединения источником. Не отключайте проверку сертификата. Таймаут сам по себе не доказывает ошибку сертификата."
             if (dns.isNotEmpty() && dns.none { it.success } && web.any { it.success }) advice += "HTTPS-сайты отвечают, но оба используемых native DNS адреса DoH не прошли: возможна проблема DNS внутри туннеля. Источник должен разрешать 1.1.1.1:443 / 8.8.8.8:443 и POST DNS-message. После исправления источника/сети переподключите VPN. Кэш браузера/YouTube не исправляет этот DNS-путь."
@@ -137,6 +137,8 @@ object NetworkDiagnostics {
     internal fun probe(endpoint: ProxyEndpoint, target: DiagnosticTarget, route: ProbeRoute): TargetDiagnostic {
         val steps = mutableListOf<ProbeStep>(); var status: Int? = null
         try {
+            if (!target.host.matches(Regex("[A-Za-z0-9.-]+")) || target.host.length > 255 || !target.path.startsWith("/") || target.path.length > 1024 || target.path.any { it == '\r' || it == '\n' })
+                throw ProbeProblem(ProbeStage.HTTP, "INVALID_TEST_TARGET", "Unsafe diagnostic test target rejected before network; raw target redacted")
             val socket = if (target.direct) {
                 val raw = Socket(); route.register(raw)
                 try {
@@ -173,7 +175,8 @@ object NetworkDiagnostics {
         } catch (e: Exception) {
             val problem = ProxyTransport.classify(steps.lastOrNull()?.stage ?: ProbeStage.TCP, e)
             if (steps.none { !it.ok }) steps.add(ProbeStep(problem.stage, false, problem.safeDetail, 0))
-            return TargetDiagnostic(target, steps, false, problem.code, status)
+            val safeTarget = if (problem.code == "INVALID_TEST_TARGET") target.copy(name = "[invalid test target]", host = "[redacted]", path = "/[redacted]") else target
+            return TargetDiagnostic(safeTarget, steps, false, problem.code, status)
         }
     }
     internal fun dnsQuery(): ByteArray = byteArrayOf(0x4c, 0x50, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 7) + "example".toByteArray(Charsets.US_ASCII) + byteArrayOf(3) + "com".toByteArray(Charsets.US_ASCII) + byteArrayOf(0, 0, 1, 0, 1)

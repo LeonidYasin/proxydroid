@@ -64,6 +64,13 @@ class NetworkDiagnosticsTest {
         val advice = DiagnosticReport.recommendations(listOf(unfinished), DiagnosticKind.INTERNET)
         assertFalse(advice.any { it.startsWith("TCP-порт прокси недоступен") })
     }
+    @Test fun diagnosticTargetInjectionIsRejectedBeforeNetworkAndRedacted() {
+        var opened = false
+        val target = web.copy(path = "/\r\nAuthorization: sentinel-password")
+        val result = NetworkDiagnostics.probe(ProxyEndpoint("localhost", 10808, "http"), target, ProbeRoute(register = { opened = true }))
+        assertEquals("INVALID_TEST_TARGET", result.code); assertFalse(opened)
+        assertFalse(DiagnosticReport(DiagnosticKind.INTERNET, "safe", emptyList(), listOf(result)).text().contains("sentinel-password"))
+    }
     @Test fun closedRegistryImmediatelyClosesNewSocket() {
         val registry = ProbeSockets(); val socket = Socket(); registry.close()
         assertThrows(java.net.SocketException::class.java) { registry.register(socket) }

@@ -219,7 +219,7 @@ class MainViewModel @JvmOverloads constructor(app: Application,
     }
 
     fun showDiagnostics() { _state.value = _state.value.copy(diagnosticVisible = true) }
-    fun dismissDiagnostics() { cancelDiagnostics(); _state.value = _state.value.copy(diagnosticVisible = false) }
+    fun dismissDiagnostics() { if (_state.value.diagnosticRunning) cancelDiagnostics(); _state.value = _state.value.copy(diagnosticVisible = false) }
     fun cancelDiagnostics() {
         diagnosticRequest++; internetJob?.cancel(); internetJob = null
         _state.value = _state.value.copy(diagnosticRunning = false, internetChecking = false,
