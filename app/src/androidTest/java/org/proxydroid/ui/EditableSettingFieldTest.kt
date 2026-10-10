@@ -5,7 +5,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.test.assertDoesNotExist
+import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -20,6 +20,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.proxydroid.utils.isValidProxyPort
 
+@OptIn(ExperimentalTestApi::class)
 class EditableSettingFieldTest {
     @get:Rule val compose = createComposeRule()
 
