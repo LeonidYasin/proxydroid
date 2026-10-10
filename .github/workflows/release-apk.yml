@@ -31,7 +31,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: signed-release-${{ github.ref }}
+  group: signed-release-${{ github.ref }}-${{ inputs.mode || 'build' }}
   cancel-in-progress: false
 
 jobs:
