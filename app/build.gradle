@@ -75,9 +75,20 @@ android {
         }
     }
 
+    // Debug keeps the full regression suite. Release smoke tests deliberately
+    // reference manifest/JNI names rather than optimized application internals.
+    testBuildType project.findProperty('testBuildType') ?: 'debug'
+    sourceSets {
+        main { assets.srcDirs = ['src/main/runtime-assets'] }
+        if (project.findProperty('testBuildType') == 'release') {
+            androidTest { java.srcDirs = ['src/releaseSmoke/java'] }
+        }
+    }
+
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled true
+            shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             // Always select the release signer: missing credentials must fail,
             // never silently produce an unsigned APK or use the debug signer.
@@ -174,7 +185,6 @@ dependencies {
     implementation(libs.json.simple) {
         exclude group: 'junit', module: 'junit'
     }
-    implementation libs.rhino
 
     // Unit test
     testImplementation libs.junit

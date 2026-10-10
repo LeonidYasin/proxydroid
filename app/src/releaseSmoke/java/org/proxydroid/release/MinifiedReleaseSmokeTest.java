@@ -1,0 +1,54 @@
+package org.proxydroid.release;
+
+import android.app.Activity;
+import android.content.Context;
+import android.content.Intent;
+import android.content.pm.ApplicationInfo;
+import android.net.VpnService;
+import androidx.test.ext.junit.runners.AndroidJUnit4;
+import androidx.test.platform.app.InstrumentationRegistry;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import java.lang.reflect.Method;
+import java.util.zip.ZipFile;
+import static org.junit.Assert.*;
+
+/** Runs against the signed, R8/resource-shrunk APK, not the debug variant. */
+@RunWith(AndroidJUnit4.class)
+public class MinifiedReleaseSmokeTest {
+    @Test public void releaseIdentityAndNoLegacyExecutables() throws Exception {
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        assertEquals("org.proxydroid", context.getPackageName());
+        assertEquals("LocProxyTV", context.getApplicationInfo().loadLabel(context.getPackageManager()).toString());
+        assertEquals(0, context.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE);
+        try (ZipFile apk = new ZipFile(context.getApplicationInfo().sourceDir)) {
+            assertNotNull(apk.getEntry("assets/pages/about.html"));
+            assertFalse(apk.stream().anyMatch(e -> e.getName().startsWith("assets/armeabi-v7a/") || e.getName().startsWith("assets/x86/")));
+        }
+    }
+
+    @Test public void optimizedLauncherStarts() throws Exception {
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        Intent intent = new Intent().setClassName(context, "org.proxydroid.ProxyDroid")
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        Activity activity = InstrumentationRegistry.getInstrumentation().startActivitySync(intent);
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+        assertNotNull(activity.getWindow().getDecorView());
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(activity::finish);
+    }
+
+    @Test public void nativeEntryPointsSurviveR8() throws Exception {
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        Class<?> type = Class.forName("org.proxydroid.utils.Tun2SocksHelper", true, context.getClassLoader());
+        Object helper = type.getDeclaredConstructor().newInstance();
+        Method start = type.getDeclaredMethod("nativeStart", VpnService.class, int.class, int.class,
+                String.class, String.class, int.class, String.class, String.class);
+        start.setAccessible(true);
+        // Empty host is rejected before accessing VpnService/TUN: no network,
+        // VPN permission or bogus descriptor is used by this linkage test.
+        assertEquals(-1, ((Number)start.invoke(helper, null, -1, 1500, "socks5", "", 9, "", "")).intValue());
+        Method stop = type.getDeclaredMethod("nativeStop");
+        stop.setAccessible(true);
+        stop.invoke(helper);
+    }
+}
