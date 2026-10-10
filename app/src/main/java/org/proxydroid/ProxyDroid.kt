@@ -38,7 +38,7 @@ class ProxyDroid : ComponentActivity() {
         if (result.resultCode == RESULT_OK) {
             val extras = ProxyController.buildExtras(viewModel.state.value.profile)
             Utils.setLastError(null)
-            startService(
+            androidx.core.content.ContextCompat.startForegroundService(this,
                 Intent(this, ProxyDroidVpnService::class.java).putExtras(extras)
             )
         }
@@ -62,9 +62,10 @@ class ProxyDroid : ComponentActivity() {
                     onRenameProfile = viewModel::renameCurrent,
                     onDeleteProfile = viewModel::deleteCurrent,
                     onToggleAdvanced = viewModel::toggleAdvanced,
-                    onCheckAlive = viewModel::checkAlive,
+                    onCheckAlive = { viewModel.checkAlive(); viewModel.checkInternet() },
                     onGatewayChange = viewModel::setUseGatewayAsHost,
                     onOpenUpdates = updates::open,
+                    onOpenYouTube = { if (!org.proxydroid.utils.YouTubeLauncher.open(this)) viewModel.reportConnectionError("YouTube/browser is not installed") },
                 )
                 AppUpdateDialog(updateState, updates::selectChannel, updates::check,
                     updates::download, updates::install, updates::dismiss)
@@ -98,7 +99,7 @@ class ProxyDroid : ComponentActivity() {
         } else {
             val extras = ProxyController.buildExtras(viewModel.state.value.profile)
             Utils.setLastError(null)
-            startService(
+            androidx.core.content.ContextCompat.startForegroundService(this,
                 Intent(this, ProxyDroidVpnService::class.java).putExtras(extras)
             )
         }

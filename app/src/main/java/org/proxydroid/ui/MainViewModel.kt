@@ -2,6 +2,15 @@ package org.proxydroid.ui
 
 import android.app.Application
 import android.content.SharedPreferences
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.LinkProperties
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
+import kotlinx.coroutines.CancellationException
+import org.proxydroid.utils.InternetProbe
+import org.proxydroid.utils.BootStatus
 import android.preference.PreferenceManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -42,9 +51,16 @@ data class MainUiState(
      * never dies silently.
      */
     val lastError: String? = null,
+    val gatewayIp: String? = null,
+    val internetChecking: Boolean = false,
+    val internetAvailable: Boolean? = null,
+    val bootStatus: String? = null,
 )
 
-class MainViewModel(app: Application) : AndroidViewModel(app) {
+class MainViewModel @JvmOverloads constructor(app: Application,
+    private val gatewayLookup: (Context) -> String? = NetworkUtils::getGatewayIp,
+    private val observeNetwork: Boolean = true,
+) : AndroidViewModel(app) {
 
     private val settings: SharedPreferences =
         PreferenceManager.getDefaultSharedPreferences(app)
@@ -52,12 +68,27 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _state = MutableStateFlow(MainUiState())
     val state: StateFlow<MainUiState> = _state.asStateFlow()
 
-    private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> }
+    private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == BootStatus.KEY) viewModelScope.launch {
+            _state.value = _state.value.copy(bootStatus = settings.getString(BootStatus.KEY, null))
+        }
+    }
+    private val cm = app.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+    private var networkRegistered = false
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) = refreshOnNetworkChange()
+        override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) = refreshOnNetworkChange()
+        override fun onLost(network: Network) = refreshOnNetworkChange()
+    }
+    private fun refreshOnNetworkChange() { viewModelScope.launch { refreshGateway() } }
+
 
     /** Job of the periodic liveness probe loop; null when not running. */
     private var pollingJob: Job? = null
     private var gatewayJob: Job? = null
     private var gatewayRequest = 0L
+    private var internetJob: Job? = null
+    private var aliveJob: Job? = null
 
     init {
         settings.registerOnSharedPreferenceChangeListener(prefListener)
@@ -67,7 +98,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 .collect { (w, c) ->
                     _state.value = _state.value.copy(isWorking = w, isConnecting = c)
                     // Auto-poll the proxy liveness while the tunnel is active.
-                    if (w) startAlivePolling() else stopAlivePolling()
+                    if (w) { startAlivePolling(); checkInternet() } else {
+                        stopAlivePolling(); internetJob?.cancel()
+                        _state.value = _state.value.copy(internetChecking = false, internetAvailable = null)
+                    }
                 }
         }
         // Mirror errors reported by the VPN service (e.g. "no gateway on
@@ -79,31 +113,32 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         reload()
+        if (observeNetwork) runCatching {
+            cm?.registerNetworkCallback(NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN).build(), networkCallback)
+            networkRegistered = cm != null
+        }
     }
 
     override fun onCleared() {
         super.onCleared()
         pollingJob?.cancel()
-        gatewayJob?.cancel()
+        gatewayJob?.cancel(); internetJob?.cancel(); aliveJob?.cancel()
+        if (networkRegistered) runCatching { cm?.unregisterNetworkCallback(networkCallback) }
         settings.unregisterOnSharedPreferenceChangeListener(prefListener)
     }
 
     fun reload() {
-        viewModelScope.launch {
-            val (profile, list, current) = withContext(Dispatchers.IO) {
-                val current = settings.getString("profile", "1") ?: "1"
-                val p = Profile().also { it.getProfile(settings) }
-                if (p.proxyType.isEmpty()) p.proxyType = "socks5"
-                Triple(p, loadProfileList(), current)
-            }
-            _state.value = _state.value.copy(
-                profile = profile,
-                profiles = list,
-                currentProfileId = current,
-                isWorking = Utils.isWorking(),
-                isConnecting = Utils.isConnecting(),
-            )
-        }
+        // SharedPreferences are in-memory; avoid an old IO snapshot overwriting
+        // a newly edited/refreshed Host after onResume or initial startup.
+        val current = settings.getString("profile", "1") ?: "1"
+        val profile = Profile().also { it.getProfile(settings) }
+        if (profile.proxyType.isEmpty()) profile.proxyType = "socks5"
+        _state.value = _state.value.copy(profile = profile, profiles = loadProfileList(),
+            currentProfileId = current, isWorking = Utils.isWorking(), isConnecting = Utils.isConnecting(),
+            bootStatus = settings.getString(BootStatus.KEY, null))
+        refreshGateway()
     }
 
     fun updateProfile(transform: Profile.() -> Unit) {
@@ -124,24 +159,47 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun toggleUseGatewayAsHost() = setUseGatewayAsHost(!_state.value.profile.useGatewayAsHost)
 
     fun setUseGatewayAsHost(enabled: Boolean) {
+        updateProfile { useGatewayAsHost = enabled }
+        refreshGateway(showMissingError = enabled)
+    }
+
+    /** Detect on startup/resume, network changes and toggle; write Host only in auto mode. */
+    fun refreshGateway(showMissingError: Boolean = false) {
         gatewayJob?.cancel()
         val request = ++gatewayRequest
         val profileId = _state.value.currentProfileId
-        updateProfile { useGatewayAsHost = enabled }
-        if (!enabled) return // Preserve the resolved host for optional manual editing.
         gatewayJob = viewModelScope.launch {
-            val gateway = withContext(Dispatchers.IO) {
-                runCatching { NetworkUtils.getGatewayIp(getApplication()) }.getOrNull()
-            }
-            // Ignore a late answer after another toggle or profile selection.
-            if (request != gatewayRequest || _state.value.currentProfileId != profileId ||
-                !_state.value.profile.useGatewayAsHost) return@launch
+            val gateway = withContext(Dispatchers.IO) { runCatching { gatewayLookup(getApplication()) }.getOrNull() }
+            if (request != gatewayRequest || _state.value.currentProfileId != profileId) return@launch
+            _state.value = _state.value.copy(gatewayIp = gateway)
+            if (!_state.value.profile.useGatewayAsHost) return@launch
             if (gateway.isNullOrBlank()) {
-                _state.value = _state.value.copy(lastError = "No usable IPv4 default gateway on this network. Host was not changed.")
+                if (showMissingError) _state.value = _state.value.copy(lastError = "No usable IPv4 default gateway on this network. Host was not changed.")
             } else {
                 updateProfile { host = gateway }
                 clearError()
             }
+        }
+    }
+
+    fun checkInternet() {
+        val endpoint = Utils.activeUpstream.value ?: return
+        if (!Utils.isWorking()) return
+        internetJob?.cancel()
+        _state.value = _state.value.copy(internetChecking = true, internetAvailable = null)
+        internetJob = viewModelScope.launch {
+            try {
+                var available = false
+                repeat(2) { attempt ->
+                    if (!available) {
+                        if (attempt > 0) delay(1500)
+                        available = withContext(Dispatchers.IO) { InternetProbe.check(endpoint) }
+                    }
+                }
+                if (Utils.isWorking() && Utils.activeUpstream.value === endpoint) {
+                    _state.value = _state.value.copy(internetChecking = false, internetAvailable = available)
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
         }
     }
 
@@ -163,56 +221,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _state.value = _state.value.copy(lastError = null)
     }
 
-    /**
-     * Runs a quick TCP liveness probe against the current profile's
-     * upstream proxy and publishes the result into [MainUiState.isAlive].
-     *
-     * Unlike the previous version, this does NOT silently swallow the
-     * reason: when the probe cannot even be attempted (auto-gateway is on
-     * but the current network has no usable gateway - typical on cellular)
-     * or when the probe fails, the reason is written to [MainUiState.lastError]
-     * so the UI can show it.
-     */
+    /** TCP reachability is not internet verification; use the running service snapshot. */
     fun checkAlive() {
+        aliveJob?.cancel()
         val profile = _state.value.profile
-        val port = profile.port
-
-        val host: String
-        if (profile.useGatewayAsHost) {
-            val gw = NetworkUtils.getGatewayIp(getApplication())
-            if (gw.isNullOrEmpty()) {
-                // Auto-gateway needs a real upstream gateway. On cellular the
-                // default route usually has no gateway, so there is nothing
-                // to probe - report it explicitly instead of showing a
-                // misleading red indicator.
-                val fb = profile.host
-                if (fb.isBlank()) {
-                    reportConnectionError(
-                        "Auto-gateway is on, but the current network has no " +
-                            "gateway (cellular?). Set the proxy host manually " +
-                            "or connect to Wi-Fi."
-                    )
-                    _state.value = _state.value.copy(isAlive = false)
-                    return
-                }
-                host = fb
-            } else {
-                host = gw
-            }
-        } else {
-            host = profile.host
-        }
-
-        viewModelScope.launch {
+        val id = _state.value.currentProfileId
+        val endpoint = Utils.activeUpstream.value
+        aliveJob = viewModelScope.launch {
             val alive = withContext(Dispatchers.IO) {
-                NetworkUtils.isProxyAlive(host, port)
+                val host = endpoint?.host ?: if (profile.useGatewayAsHost) gatewayLookup(getApplication()) else profile.host
+                !host.isNullOrBlank() && NetworkUtils.isProxyAlive(host, endpoint?.port ?: profile.port)
             }
-            _state.value = _state.value.copy(
-                isAlive = alive,
-                lastError = if (alive) null else
-                    "Proxy unreachable at $host:$port (connection refused, " +
-                        "timed out, or no route).",
-            )
+            if (_state.value.currentProfileId == id && Utils.activeUpstream.value === endpoint) {
+                _state.value = _state.value.copy(isAlive = alive)
+            }
         }
     }
 
@@ -240,7 +262,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun selectProfile(id: String) {
         if (id == _state.value.currentProfileId) return
         gatewayJob?.cancel(); gatewayRequest++
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch {
             // Save current profile JSON under its ID, then load the new one.
             persistCurrentProfileJson(_state.value.profile)
             settings.edit().putString("profile", id).apply()
@@ -260,12 +282,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 currentProfileId = id,
                 profiles = loadProfileList(),
             )
+            refreshGateway()
         }
     }
 
     fun newProfile(name: String) {
         gatewayJob?.cancel(); gatewayRequest++
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch {
             persistCurrentProfileJson(_state.value.profile)
             val nextId = nextProfileId()
             val p = Profile().apply {
@@ -287,14 +310,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun renameCurrent(newName: String) {
         if (newName.isBlank()) return
         updateProfile { name = newName }
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch {
             _state.value = _state.value.copy(profiles = loadProfileList())
         }
     }
 
     fun deleteCurrent() {
         gatewayJob?.cancel(); gatewayRequest++
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch {
             val cur = _state.value.currentProfileId
             settings.edit().remove(cur).apply()
             // Pick the first remaining profile (or create a fresh one).
@@ -313,6 +336,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 currentProfileId = next,
                 profiles = remaining,
             )
+            refreshGateway()
         }
     }
 

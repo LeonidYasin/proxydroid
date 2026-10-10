@@ -35,6 +35,12 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withTimeoutOrNull
+import android.preference.PreferenceManager
+import org.proxydroid.utils.BootStatus
+import org.proxydroid.utils.ProxyEndpoint
 import org.proxydroid.utils.NetworkUtils
 import org.proxydroid.utils.Tun2SocksHelper
 import org.proxydroid.utils.Utils
@@ -52,6 +58,8 @@ class ProxyDroidVpnService : VpnService() {
         private const val VPN_MTU = 1500
         private const val VPN_ADDRESS = "10.0.0.1"
         private const val VPN_ROUTE = "0.0.0.0"
+        const val EXTRA_WAIT_NETWORK = "wait_for_network"
+        const val ACTION_AUTOSTART = "org.proxydroid.action.AUTOSTART"
         const val ACTION_STOP = "org.proxydroid.action.STOP_VPN"
     }
 
@@ -71,75 +79,72 @@ class ProxyDroidVpnService : VpnService() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent == null) {
-            stopSelf()
+        if (intent?.action == ACTION_STOP) {
+            vpnJob?.cancel()
+            stopVpn(); Utils.setWorking(false); Utils.setConnecting(false)
+            stopForeground(STOP_FOREGROUND_REMOVE); stopSelf()
             return START_NOT_STICKY
         }
-
-        if (intent.action == ACTION_STOP) {
-            Log.d(TAG, "ACTION_STOP received")
-            stopVpn()
-            Utils.setWorking(false)
-            Utils.setConnecting(false)
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            stopSelf()
+        // Duplicate boot/update events must not restart a live or waiting VPN.
+        if (Utils.isWorking() || vpnJob?.isActive == true) return START_STICKY
+        val settings = PreferenceManager.getDefaultSharedPreferences(this)
+        val saved = Profile().apply { getProfile(settings) }
+        val profileId = settings.getString("profile", "1") ?: "1"
+        val bundle = intent?.extras ?: org.proxydroid.utils.ProxyController.buildExtras(saved)
+        host = bundle.getString("host", "")
+        port = bundle.getInt("port", Profile.DEFAULT_PORT)
+        val auth = bundle.getBoolean("isAuth", false)
+        user = if (auth) bundle.getString("user", "") else ""
+        password = if (auth) bundle.getString("password", "") else ""
+        proxyType = bundle.getString("proxyType", "socks5")
+        proxyApps = bundle.getString("proxyApps", "")
+        isBypassApps = bundle.getBoolean("isBypassApps", false)
+        val autoGateway = bundle.getBoolean("useGatewayAsHost", false)
+        val waitNetwork = intent?.getBooleanExtra(EXTRA_WAIT_NETWORK, false) == true || intent == null
+        // Promote immediately; network/gateway/proxy waiting happens ONLY afterwards.
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(NOTIFICATION_ID, createNotification("Connecting / waiting for network"), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            } else startForeground(NOTIFICATION_ID, createNotification("Connecting / waiting for network"))
+        } catch (failure: Exception) {
+            Utils.setLastError("Android refused foreground VPN startup: ${failure.javaClass.simpleName}")
+            Utils.setWorking(false); Utils.setConnecting(false); stopSelf()
             return START_NOT_STICKY
         }
-
-        val bundle = intent.extras
-        if (bundle != null) {
-            host = bundle.getString("host", "")
-            port = bundle.getInt("port", 0)
-            val isAuth = bundle.getBoolean("isAuth", false)
-            user = if (isAuth) bundle.getString("user", "") else ""
-            password = if (isAuth) bundle.getString("password", "") else ""
-            proxyType = bundle.getString("proxyType", "socks5")
-            proxyApps = bundle.getString("proxyApps", "")
-            isBypassApps = bundle.getBoolean("isBypassApps", false)
-
-            // Auto-gateway: when set, ignore the manually configured host and
-            // use the current network's default gateway as the upstream proxy
-            // host instead. Useful when sharing a local proxy over a Wi-Fi
-            // hotspot (e.g. proxy listening on the phone itself at the
-            // hotspot gateway address like 192.168.43.1).
-            if (bundle.getBoolean("useGatewayAsHost", false)) {
-                val gw = NetworkUtils.getGatewayIp(this)
-                if (!gw.isNullOrEmpty()) {
-                    Log.i(TAG, "useGatewayAsHost: replacing host='$host' with gateway='$gw'")
-                    host = gw
-                } else if (host.isBlank()) {
-                    // No gateway (typical on cellular) and no manual host:
-                    // there is nothing to connect to. Fail fast with a clear
-                    // message instead of starting a tunnel to an empty host.
-                    val msg = "Auto-gateway is enabled, but this network has no " +
-                        "gateway (cellular?). Set the proxy host manually or " +
-                        "connect to Wi-Fi."
-                    Log.e(TAG, msg)
-                    Utils.setLastError(msg)
-                    Utils.setConnecting(false)
-                    Utils.setWorking(false)
-                    stopForeground(STOP_FOREGROUND_REMOVE)
-                    stopSelf()
-                    return START_NOT_STICKY
-                } else {
-                    Log.w(TAG, "useGatewayAsHost: gateway unavailable, keeping host='$host'")
+        vpnJob?.cancel()
+        Utils.setConnecting(true)
+        vpnJob = serviceScope.launch {
+            try {
+                if (waitNetwork) BootStatus.record(this@ProxyDroidVpnService, "Waiting for network/proxy (up to 120 seconds)")
+                val ready = withTimeoutOrNull(if (waitNetwork) 120_000L else 5000L) {
+                    while (true) {
+                        val gateway = if (autoGateway) NetworkUtils.getGatewayIp(this@ProxyDroidVpnService) else null
+                        if (gateway != null) host = gateway
+                        val networkReady = !waitNetwork || NetworkUtils.hasPhysicalNetwork(this@ProxyDroidVpnService)
+                        val gatewayReady = !autoGateway || gateway != null
+                        val proxyReady = !waitNetwork || (host.isNotBlank() && port in 1..65535 && NetworkUtils.isProxyAlive(host, port))
+                        if (networkReady && gatewayReady && proxyReady) break
+                        if (!waitNetwork) error("No usable IPv4 default gateway; Host was not changed")
+                        delay(2000)
+                    }
+                    true
+                } == true
+                check(ready) { "Boot start timed out waiting for network/proxy. Open the app and reconnect." }
+                if (autoGateway && settings.getString("profile", "1") == profileId && settings.getBoolean("useGatewayAsHost", false)) {
+                    val current = Profile().apply { getProfile(settings); this.host = this@ProxyDroidVpnService.host }
+                    current.setProfile(settings); settings.edit().putString(profileId, current.toString()).apply()
                 }
+                startVpn()
+                if (waitNetwork) BootStatus.record(this@ProxyDroidVpnService,
+                    if (Utils.isWorking()) "Boot VPN started successfully" else "Boot VPN failed; see connection error")
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (failure: Exception) {
+                Utils.setLastError(failure.message ?: "VPN start failed")
+                if (waitNetwork) BootStatus.record(this@ProxyDroidVpnService, "Boot VPN failed: ${failure.message ?: "unknown error"}")
+                Utils.setWorking(false); Utils.setConnecting(false)
+                stopVpn(); stopForeground(STOP_FOREGROUND_REMOVE); stopSelf()
             }
         }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(
-                NOTIFICATION_ID,
-                createNotification(),
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, createNotification())
-        }
-
-        vpnJob?.cancel()
-        vpnJob = serviceScope.launch { startVpn() }
-
         return START_STICKY
     }
 
@@ -158,7 +163,7 @@ class ProxyDroidVpnService : VpnService() {
         stopSelf()
     }
 
-    private fun createNotification(): Notification {
+    private fun createNotification(status: String = getString(R.string.vpn_running)): Notification {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
@@ -180,7 +185,7 @@ class ProxyDroidVpnService : VpnService() {
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.app_name))
-            .setContentText(getString(R.string.vpn_running))
+            .setContentText(status)
             .setSmallIcon(R.drawable.ic_stat_proxydroid)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
@@ -269,7 +274,9 @@ class ProxyDroidVpnService : VpnService() {
 
             Utils.setLastError(null)
             Utils.setConnecting(false)
+            Utils.setActiveUpstream(ProxyEndpoint(host, port, proxyType, user.takeIf { it.isNotEmpty() }, password.takeIf { it.isNotEmpty() }))
             Utils.setWorking(true)
+            (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(NOTIFICATION_ID, createNotification())
             Log.i(TAG, "VPN established and tun2socks running")
         } catch (t: Throwable) {
             val msg = "Failed to establish VPN: ${t.javaClass.simpleName}: ${t.message ?: "no details"}"

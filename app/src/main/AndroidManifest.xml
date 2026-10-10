@@ -20,8 +20,15 @@
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
+    <queries>
+        <package android:name="com.google.android.youtube.tv" />
+        <package android:name="com.google.android.youtube" />
+        <intent><action android:name="android.intent.action.VIEW" /><data android:scheme="https" /></intent>
+    </queries>
+
     <application
         android:name=".ProxyDroidApplication"
+        android:allowBackup="false"
         android:icon="@drawable/ic_launcher"
         android:banner="@drawable/tv_banner"
         android:label="@string/app_name"
@@ -72,16 +79,14 @@
                 android:value="true" />
         </service>
 
-        <!-- Re-arms the proxy on device boot when the active profile has
-             "auto-connect" enabled. Without this receiver registered here,
-             the boot flow never reaches ProxyDroidReceiver.onReceive(). -->
+        <!-- User-enabled Start on boot. Credential-encrypted settings are
+             read only after unlock; this is NOT Wi-Fi auto-connect. -->
         <receiver
             android:name=".ProxyDroidReceiver"
             android:enabled="true"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
                 <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />

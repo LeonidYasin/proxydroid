@@ -36,6 +36,10 @@ import kotlinx.coroutines.flow.asStateFlow
 object Utils {
     private const val TAG = "ProxyDroid"
 
+    private val _activeUpstream = MutableStateFlow<ProxyEndpoint?>(null)
+    val activeUpstream: StateFlow<ProxyEndpoint?> = _activeUpstream.asStateFlow()
+    fun setActiveUpstream(endpoint: ProxyEndpoint?) { _activeUpstream.value = endpoint }
+
     private val _working = MutableStateFlow(false)
     val working: StateFlow<Boolean> = _working.asStateFlow()
 
@@ -56,6 +60,7 @@ object Utils {
     @JvmStatic
     fun setWorking(working: Boolean) {
         _working.value = working
+        if (!working) _activeUpstream.value = null
     }
 
     @JvmStatic

@@ -100,6 +100,7 @@ fun MainScreen(
     onCheckAlive: () -> Unit,
     onGatewayChange: (Boolean) -> Unit,
     onOpenUpdates: () -> Unit,
+    onOpenYouTube: () -> Unit = {},
 ) {
     val scroll = rememberScrollState()
     val topBarState = rememberTopAppBarState()
@@ -170,10 +171,11 @@ fun MainScreen(
                 .verticalScroll(scroll),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            ConnectionCard(state = state, onToggle = onToggle, onCheckAlive = onCheckAlive, focusRequester = connectionFocus)
+            ConnectionCard(state = state, onToggle = onToggle, onCheckAlive = onCheckAlive, focusRequester = connectionFocus, onOpenYouTube = onOpenYouTube)
             AutoGatewayCard(
                 enabled = state.profile.useGatewayAsHost,
                 onChange = onGatewayChange,
+                gatewayIp = state.gatewayIp,
             )
             ProxyEndpointCard(profile = state.profile, edit = onProfileEdit)
             ProfileCard(
@@ -184,6 +186,7 @@ fun MainScreen(
             ProxyForm(profile = state.profile, edit = onProfileEdit)
             AutoStartOnBootCard(
                 enabled = state.profile.autoStartOnBoot,
+                status = state.bootStatus,
                 onChange = { onProfileEdit { autoStartOnBoot = it } },
             )
             AdvancedSection(
@@ -221,6 +224,7 @@ private fun ConnectionCard(
     onToggle: (Boolean) -> Unit,
     onCheckAlive: () -> Unit,
     focusRequester: FocusRequester,
+    onOpenYouTube: () -> Unit,
 ) {
     // Request inside Scaffold's subcomposition, after the target exists.
     val inputMode = LocalInputModeManager.current
@@ -278,6 +282,7 @@ private fun ConnectionCard(
                 if (on) {
                     Spacer(Modifier.height(4.dp))
                     LivenessIndicator(state = state, onCheckAlive = onCheckAlive)
+                    InternetActions(state, onOpenYouTube, onCheckAlive)
                 }
             }
             if (state.isConnecting) {
@@ -292,6 +297,23 @@ private fun ConnectionCard(
                 enabled = !state.isConnecting,
                 modifier = Modifier.focusRequester(focusRequester).testTag("connection-toggle"),
             )
+        }
+    }
+}
+
+@Composable
+internal fun InternetActions(state: MainUiState, onOpenYouTube: () -> Unit, onRetry: () -> Unit) {
+    if (!state.isWorking) return
+    when {
+        state.internetChecking -> Text("Checking internet through proxy…", style = MaterialTheme.typography.bodySmall)
+        state.internetAvailable == true -> {
+            Text("Internet verified through proxy", style = MaterialTheme.typography.bodySmall)
+            TextButton(onClick = onOpenYouTube, modifier = Modifier.testTag("open-youtube")) { Text("Open YouTube") }
+        }
+        state.internetAvailable == false -> {
+            Text("Internet through proxy could not be verified", color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall)
+            TextButton(onClick = onRetry) { Text("Retry internet check") }
         }
     }
 }
@@ -408,10 +430,11 @@ private fun ProfileCard(
 }
 
 @Composable
-private fun AutoGatewayCard(enabled: Boolean, onChange: (Boolean) -> Unit) {
+private fun AutoGatewayCard(enabled: Boolean, onChange: (Boolean) -> Unit, gatewayIp: String?) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text("Auto gateway", style = MaterialTheme.typography.labelLarge)
+            Text("Detected gateway: ${gatewayIp ?: "not available yet"}", style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.height(8.dp))
             ToggleRow(
                 title = "Use default gateway as proxy host",
@@ -426,16 +449,16 @@ private fun AutoGatewayCard(enabled: Boolean, onChange: (Boolean) -> Unit) {
 }
 
 @Composable
-private fun AutoStartOnBootCard(enabled: Boolean, onChange: (Boolean) -> Unit) {
+private fun AutoStartOnBootCard(enabled: Boolean, onChange: (Boolean) -> Unit, status: String?) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text("Startup", style = MaterialTheme.typography.labelLarge)
+            status?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             Spacer(Modifier.height(8.dp))
             ToggleRow(
                 title = "Start on boot",
-                subtitle = "Automatically re-arm the proxy after the device reboots " +
-                    "or after the app is updated. Independent of the Wi-Fi auto-connect " +
-                    "option above.",
+                subtitle = "Connect once to grant VPN consent. After boot/update, wait up to " +
+                    "120 seconds for network/proxy. OEM autostart restrictions may apply.",
                 checked = enabled,
                 onChange = onChange,
             )

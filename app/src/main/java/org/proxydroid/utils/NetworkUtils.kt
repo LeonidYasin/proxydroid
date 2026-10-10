@@ -27,6 +27,16 @@ import java.net.Socket
  * exposes the gateway to non-system apps.
  */
 object NetworkUtils {
+    fun hasPhysicalNetwork(context: Context): Boolean {
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
+        return cm.allNetworks.any { network ->
+            val caps = cm.getNetworkCapabilities(network)
+            caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true &&
+                caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN) &&
+                cm.getLinkProperties(network)?.linkAddresses?.isNotEmpty() == true
+        }
+    }
+
     fun getGatewayIp(context: Context): String? {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE)
             as? ConnectivityManager ?: return null

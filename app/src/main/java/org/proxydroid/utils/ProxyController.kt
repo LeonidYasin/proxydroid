@@ -31,20 +31,29 @@ object ProxyController {
         putInt("port", profile.port)
     }
 
-    /** Start the VPN service if consent is already granted; otherwise launch the
-     *  activity with EXTRA_AUTO_START so it can run the consent flow. */
-    fun startWithConsent(context: Context, profile: Profile) {
-        val consent = VpnService.prepare(context)
-        if (consent == null) {
-            val intent = Intent(context, ProxyDroidVpnService::class.java)
-                .putExtras(buildExtras(profile))
-            context.startService(intent)
-        } else {
-            val launch = Intent(context, ProxyDroid::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                putExtra(EXTRA_AUTO_START, true)
+    /** Background starts never open consent UI; foreground starts may request it. */
+    fun startWithConsent(context: Context, profile: Profile,
+                         allowConsentUi: Boolean = true, waitForNetwork: Boolean = false): Boolean {
+        try {
+            if (VpnService.prepare(context) != null) {
+                if (!allowConsentUi) {
+                    BootStatus.record(context, "VPN consent required. Open ProxyDroid and connect once before enabling Start on boot.")
+                    return false
+                }
+                context.startActivity(Intent(context, ProxyDroid::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); putExtra(EXTRA_AUTO_START, true)
+                })
+            } else {
+                val intent = Intent(context, ProxyDroidVpnService::class.java)
+                    .putExtras(buildExtras(profile)).putExtra(ProxyDroidVpnService.EXTRA_WAIT_NETWORK, waitForNetwork)
+                if (waitForNetwork) intent.action = ProxyDroidVpnService.ACTION_AUTOSTART
+                androidx.core.content.ContextCompat.startForegroundService(context, intent)
             }
-            context.startActivity(launch)
+            return true
+        } catch (failure: Exception) {
+            Utils.setLastError("Android could not start VPN: ${failure.javaClass.simpleName}")
+            if (waitForNetwork) BootStatus.record(context, "Android/OEM refused foreground VPN startup; check VPN consent and autostart restrictions.")
+            return false
         }
     }
 
