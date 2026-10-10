@@ -40,3 +40,15 @@ assert 'android.permission.REQUEST_INSTALL_PACKAGES' in (ROOT / 'app/src/main/An
 paths = ET.parse(ROOT / 'app/src/main/res/xml/update_file_paths.xml').getroot()
 assert paths.find('cache-path').get('path') == 'updates/'
 print('PASS: endpoint order, initial connection focus, fresh gateway callback and scoped update provider')
+
+receiver = (ROOT / 'app/src/main/java/org/proxydroid/ProxyDroidReceiver.kt').read_text()
+controller = (ROOT / 'app/src/main/java/org/proxydroid/utils/ProxyController.kt').read_text()
+assert 'allowConsentUi = false' in receiver and 'waitForNetwork = true' in receiver
+assert 'ContextCompat.startForegroundService' in controller
+assert 'refreshGateway()' in vm and 'InternetProbe.check(endpoint)' in vm
+assert 'internetAvailable == true' in screen and 'testTag("open-youtube")' in screen
+for path in ['doh_client.rs', 'tun2socks.rs']:
+    rust = (ROOT / 'app/src/main/rust/proxydroid-tun2socks/src' / path).read_text()
+    assert 'danger_accept_invalid_certs(true)' not in rust and 'struct NoVerify' not in rust
+assert 'info!("DoH client: proxy={}", proxy_url)' not in (ROOT / 'app/src/main/rust/proxydroid-tun2socks/src/doh_client.rs').read_text()
+print('PASS: startup gateway, consent-safe foreground boot, verified YouTube gate and TLS/logging contracts')

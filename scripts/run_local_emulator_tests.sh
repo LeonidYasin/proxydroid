@@ -109,7 +109,7 @@ build_apks() {
 
 install_apks() {
     local serial="$1"
-    local app_apk="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
+    local app_apk="$PROJECT_DIR/app/build/outputs/apk/debug/app-universal-debug.apk"
     local test_apk="$PROJECT_DIR/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
     [ -f "$app_apk"  ] || die "missing $app_apk"
     [ -f "$test_apk" ] || die "missing $test_apk"

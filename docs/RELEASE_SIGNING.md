@@ -79,7 +79,19 @@ TunXBox. The public certificate fingerprint is pinned in `signing-certificate.sh
 `0749fd8dc3df58d0b268d95f7bd43110e8314fd07ad61edb5672ee1406977657`.
 The CI fingerprint must match this reviewed pin before any signing build.
 
-## Encrypted offline backup
+## Encrypted offline backup — separate owner-authorized operation
+
+**A signed APK request is not permission to export the private signing key.**
+No backup/export is performed as part of a build or release. Do not dispatch
+`mode=backup` without separate explicit owner approval of the destination and
+handling of private key material; an encrypted Actions artifact is still key
+material disclosure. Prefer an offline owner-controlled backup and retain the
+same signing identity. Lost private key cannot be reconstructed from its public
+certificate; generating another key does not update existing signed installs.
+
+The following is technical recovery documentation, not authorization to run it.
+
+## Backup mechanics (only with separate approval)
 
 Set a strong, unique 20-256 character password without line breaks in repository
 secret `PROXYDROID_BACKUP_PASSWORD`. Save this password separately in a password
@@ -133,3 +145,26 @@ Release notes contain the complete build identity. Releases are created as draft
 and published only after all named assets upload; existing published releases are
 not overwritten. Unmerged PR builds are published only as explicitly marked
 pre-releases, not represented as final stable releases.
+
+
+## 3.8 release / validation details
+
+Exports: universal (arm64-v8a, armeabi-v7a, x86, x86_64) and compact
+armeabi-v7a, with identical versionCode, source commit and signing certificate.
+Each has its own artifact basename and `.apk.sha256`, `.signing.txt`,
+`.build-info.json` / `.build-info.txt` assets. Real local outputs are
+`app-universal-release.apk` and `app-armeabi-v7a-release.apk` before CI renaming.
+
+Names include version, Android TV/Phone, ABI, release-signed, channel, run ID,
+attempt and SHA12. Never equate the compressed artifact ZIP size with APK bytes.
+Tag: `vVERSION-rc.gSHA12` (Test) or `vVERSION` (Stable). Version comes only from
+version.properties. Reusing an existing released tag/binary is refused.
+
+Tagged publication waits for successful Android workflow on the exact source
+SHA, including blocking emulator tests. Manual untagged / PR-label calls produce
+signed artifacts; they do not imply a published stable or successful device QA.
+After merge, auto-tag workflow explicitly dispatches release because GitHub's
+GITHUB_TOKEN tag push does not recursively trigger another workflow.
+
+For build commands and prerequisites see README. For install-time checks and
+unknown-source permission see docs/INTERNET_YOUTUBE.md and README Updates.
