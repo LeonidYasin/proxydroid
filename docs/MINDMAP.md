@@ -1,10 +1,10 @@
 # Полный mind map проекта LocProxyTV
 
-Source version: **3.8.4** в рабочей ветке. Карта описывает модули/связи/границы реализации, а не подтверждает merge или успешный OEM device QA. [Интерактивная карта](MINDMAP.html) · [Архитектура](ARCHITECTURE.md) · [Roadmap](../ROADMAP.md).
+Source version: **3.8.5** в рабочей ветке. Карта описывает модули/связи/границы реализации, а не подтверждает merge или успешный OEM device QA. [Интерактивная карта](MINDMAP.html) · [Архитектура](ARCHITECTURE.md) · [Roadmap](../ROADMAP.md).
 
 ```mermaid
 mindmap
-  root((LocProxyTV 3.8.4))
+  root((LocProxyTV 3.8.5))
     UX · TV  ·  Phone
       Вход
         ProxyDroid activity · VPN consent/result · foreground start · MainScreen
@@ -107,7 +107,7 @@ mindmap
         upstream probe ≠ full TUN path/YouTube playback · Google block false negative · allow-list matters
     Обновления и release
       Updater UI
-        AppUpdateDialog / UpdateViewModel / full clickable APK path · Stable vs Test · progress/cancel
+        AppUpdateDialog / UpdateViewModel / full clickable APK path · Stable vs Test · progress/cancel · separate proxy/YouTube diagnostics
       Каталог
         ReleaseCatalog · no drafts/debug · channel consistency · trusted asset URLs · compatible ABI
       Download
@@ -117,7 +117,7 @@ mindmap
       Установка
         UpdateFileProvider scoped URI · Android visible Activity + unknown sources resume + installer confirmation · no silent install
       Версия · имя
-        version.properties to 3.8.4 / 30804 · build_metadata.py to platform/ABI/channel/run/attempt/commit
+        version.properties to 3.8.5 / 30805 · build_metadata.py to platform/ABI/channel/run/attempt/commit
       CI
         android-build.yml build/unit/lint/blocking emulator · fixtures · exact-SHA publication gate
       Публикация
@@ -225,12 +225,12 @@ Software tests; real OEM reboot pending
 ### Обновления и release
 Signed universal + ARM32
 
-- **Updater UI:** AppUpdateDialog / UpdateViewModel / full clickable APK path · Stable vs Test · progress/cancel
+- **Updater UI:** AppUpdateDialog / UpdateViewModel / full clickable APK path · Stable vs Test · progress/cancel · separate proxy/YouTube diagnostics
 - **Каталог:** ReleaseCatalog · no drafts/debug · channel consistency · trusted asset URLs · compatible ABI
 - **Download:** GitHubUpdater · HTTPS allowlisted redirects · private cache/updates · bounded bytes/checksum
 - **APK trust:** actual package/version/minSDK/native ABI · current installed signer · downgrade refusal
 - **Установка:** UpdateFileProvider scoped URI · Android visible Activity + unknown sources resume + installer confirmation · no silent install
-- **Версия/имя:** version.properties → 3.8.4 / 30804 · build_metadata.py → platform/ABI/channel/run/attempt/commit
+- **Версия/имя:** version.properties → 3.8.5 / 30805 · build_metadata.py → platform/ABI/channel/run/attempt/commit
 - **CI:** android-build.yml build/unit/lint/blocking emulator · fixtures · exact-SHA publication gate
 - **Публикация:** release-apk.yml · pinned keystore · signature/zipalign/nondebug/ABI · draft then publish both APKs
 - **Автоматизация:** auto-tag-release.yml explicit dispatch · prerelease-from-pr label → artifacts, no rolling overwrite

@@ -209,12 +209,15 @@ class ProxyDroidVpnService : VpnService() {
                 .addDnsServer("10.0.0.2")
 
             // Android forbids mixing allowed and disallowed application lists.
+            val appliedAllowed = linkedSetOf<String>()
+            val appliedExcluded = linkedSetOf(packageName)
             val apps = proxyApps.split("|").filter { it.isNotBlank() && it != packageName }.distinct()
             if (proxyApps.isNotBlank() && !isBypassApps) {
                 var added = 0
                 for (app in apps) {
                     try {
                         builder.addAllowedApplication(app)
+                        appliedAllowed.add(app)
                         added++
                     } catch (e: android.content.pm.PackageManager.NameNotFoundException) {
                         Log.w(TAG, "Selected app is no longer installed: $app", e)
@@ -229,6 +232,7 @@ class ProxyDroidVpnService : VpnService() {
                     for (app in apps) {
                         try {
                             builder.addDisallowedApplication(app)
+                            appliedExcluded.add(app)
                         } catch (e: android.content.pm.PackageManager.NameNotFoundException) {
                             Log.w(TAG, "Bypass app is no longer installed: $app", e)
                         }
@@ -274,6 +278,7 @@ class ProxyDroidVpnService : VpnService() {
 
             Utils.setLastError(null)
             Utils.setConnecting(false)
+            Utils.setActiveRouting(org.proxydroid.utils.ActiveRouting(if (proxyApps.isNotBlank() && !isBypassApps) appliedAllowed.toSet() else null, appliedExcluded.toSet()))
             Utils.setActiveUpstream(ProxyEndpoint(host, port, proxyType, user.takeIf { it.isNotEmpty() }, password.takeIf { it.isNotEmpty() }))
             Utils.setWorking(true)
             (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(NOTIFICATION_ID, createNotification())

@@ -41,3 +41,8 @@ Legacy NTLM/PAC/DNS toggles не соответствуют полноценно
 UpdateViewModel pendingInstall → resumed Activity → IO verifyReady → APK content URI → ACTION_INSTALL_PACKAGE / VIEW fallback. Permission return возобновляет установку; full path action повторяет её без скачки. Подробнее [обновления](APP_UPDATES.md).
 
 `scripts/build_site.py` строит GitHub Pages из canonical Markdown, а mind map копируется в интерактивную страницу. Публикация не имеет доступа к signing secrets. Подробнее [сайт](GITHUB_PAGES.md).
+
+
+## Диагностика 3.8.5
+
+`ConnectionDiagnostics` / `ConnectionDiagnosticDialog` → `MainViewModel` request generation → `DeviceDiagnostics` physical network + actual `ActiveRouting` → `NetworkDiagnostics` targets/DoH/direct reference → instrumented `ProxyTransport` stages. Service публикует applied routing лишь после successful native startup; выключение очищает snapshot. Credentials не попадают в отчёт. Это не native data-plane health monitor; исходный simple `InternetProbe` остаётся legacy helper, UI использует structured engine.

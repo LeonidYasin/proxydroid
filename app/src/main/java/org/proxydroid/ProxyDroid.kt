@@ -19,6 +19,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import org.proxydroid.ui.ConnectionDiagnosticDialog
 import org.proxydroid.ui.AppUpdateDialog
 import org.proxydroid.update.UpdateViewModel
 import org.proxydroid.ui.MainScreen
@@ -65,11 +66,15 @@ class ProxyDroid : ComponentActivity() {
                     onRenameProfile = viewModel::renameCurrent,
                     onDeleteProfile = viewModel::deleteCurrent,
                     onToggleAdvanced = viewModel::toggleAdvanced,
-                    onCheckAlive = { viewModel.checkAlive(); viewModel.checkInternet() },
+                    onCheckAlive = viewModel::checkAlive,
                     onGatewayChange = viewModel::setUseGatewayAsHost,
                     onOpenUpdates = updates::open,
                     onOpenYouTube = { if (!org.proxydroid.utils.YouTubeLauncher.open(this)) viewModel.reportConnectionError("YouTube/browser is not installed") },
+                    onRunDiagnostics = { viewModel.checkDiagnostics() },
+                    onCheckYouTube = viewModel::checkYouTube,
+                    onShowDiagnostics = viewModel::showDiagnostics,
                 )
+                ConnectionDiagnosticDialog(state, viewModel::cancelDiagnostics, viewModel::dismissDiagnostics)
                 AppUpdateDialog(updateState, updates::selectChannel, updates::check,
                     updates::download, { updates.install(this) }, updates::dismiss)
             }

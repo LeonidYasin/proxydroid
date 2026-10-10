@@ -45,10 +45,31 @@ receiver = (ROOT / 'app/src/main/java/org/proxydroid/ProxyDroidReceiver.kt').rea
 controller = (ROOT / 'app/src/main/java/org/proxydroid/utils/ProxyController.kt').read_text()
 assert 'allowConsentUi = false' in receiver and 'waitForNetwork = true' in receiver
 assert 'ContextCompat.startForegroundService' in controller
-assert 'refreshGateway()' in vm and 'InternetProbe.check(endpoint)' in vm
+assert 'refreshGateway()' in vm and 'NetworkDiagnostics.run(kind, endpoint' in vm
 assert 'internetAvailable == true' in screen and 'testTag("open-youtube")' in screen
 for path in ['doh_client.rs', 'tun2socks.rs']:
     rust = (ROOT / 'app/src/main/rust/proxydroid-tun2socks/src' / path).read_text()
     assert 'danger_accept_invalid_certs(true)' not in rust and 'struct NoVerify' not in rust
 assert 'info!("DoH client: proxy={}", proxy_url)' not in (ROOT / 'app/src/main/rust/proxydroid-tun2socks/src/doh_client.rs').read_text()
 print('PASS: startup gateway, consent-safe foreground boot, verified YouTube gate and TLS/logging contracts')
+
+assert 'exitUntilCollapsedScrollBehavior' not in screen and 'clipToBounds()' in screen
+assert 'consumeWindowInsets(padding)' in screen and 'testTag("app-top-bar")' in screen
+manager = (ROOT / 'app/src/main/java/org/proxydroid/update/ResumableDownload.kt').read_text()
+assert 'Content-Range' in manager and 'Mutex' in manager and 'sha256' in manager
+print('PASS: pinned/clipped header, serialized resumable download and whole-file checksum')
+
+transport = (ROOT / 'app/src/main/java/org/proxydroid/utils/ProxyTransport.kt').read_text()
+diagnostics = (ROOT / 'app/src/main/java/org/proxydroid/utils/NetworkDiagnostics.kt').read_text()
+device = (ROOT / 'app/src/main/java/org/proxydroid/utils/DeviceDiagnostics.kt').read_text()
+ui = (ROOT / 'app/src/main/java/org/proxydroid/ui/ConnectionDiagnostics.kt').read_text()
+assert 'endpointIdentificationAlgorithm = "HTTPS"' in transport and 'ssl.startHandshake()' in transport
+assert 'SOCKS5_REP_$reply' in transport and 'CONNECT_HTTP_$code' in transport
+assert 'withTimeout(65_000)' in diagnostics and 'sockets.close()' in diagnostics and 'Semaphore(2)' in diagnostics
+assert '!it.target.direct && !it.target.doh && it.success' in diagnostics
+assert 'validateDnsReply' in diagnostics and 'application/dns-message' in diagnostics
+assert 'safeEndpoint' in diagnostics and 'Raw' not in diagnostics.split('fun safeEndpoint')[1].split('suspend fun run')[0]
+assert 'bindSocket(socket)' in device and 'ACTUAL routing' in device
+assert 'testTag("check-proxy-internet")' in ui and 'testTag("check-youtube-proxy")' in ui
+assert 'diagnosticRequest' in vm and 'copy(stale = true)' in vm
+print('PASS: staged/auth/DoH diagnostics, separate direct reference, actual route, cancellation and two buttons')

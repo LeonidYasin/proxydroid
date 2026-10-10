@@ -1,5 +1,12 @@
 # Изменения
 
+## 3.8.5 — подробная диагностика
+
+- Две независимые проверки: proxy/internet и YouTube через прокси; этапы TCP/auth/CONNECT/TLS/HTTP, коды ошибок и длительность.
+- DoH binary query к native resolver IP endpoints, явно отдельный прямой HTTPS-контроль, физическая сеть/Private DNS/MTU и actual routing snapshot.
+- Копируемый безопасный отчёт, рекомендации source-vs-TV/cache/reconnect, ограничения TUN/video честно указаны.
+- Bounded concurrency/deadlines, cancellation socket registry, stale generation guards; без автоматических сбросов и TLS bypass.
+
 ## 3.8.4 — LocProxyTV
 
 - Новое отображаемое имя в TV/phone launcher, шапке, уведомлениях, актуальных инструкциях и сайте.

@@ -2,11 +2,19 @@
 
 VPN-клиент, направляющий IPv4/TCP-трафик выбранных приложений через ваш SOCKS/HTTP-прокси. Root не требуется. Интерфейс Jetpack Compose поддерживает пульт/DPAD и телефоны.
 
-> Разрабатываемая версия ветки: **3.8.4**. Это не означает, что изменения уже в `main` или стабильном релизе. Готовые APK и точный коммит смотрите в [Releases](https://github.com/LeonidYasin/proxydroid/releases); изменения проходят [PR #12](https://github.com/LeonidYasin/proxydroid/pull/12). Статус CI: [Actions](https://github.com/LeonidYasin/proxydroid/actions).
+> Разрабатываемая версия ветки: **3.8.5**. Это не означает, что изменения уже в `main` или стабильном релизе. Готовые APK и точный коммит смотрите в [Releases](https://github.com/LeonidYasin/proxydroid/releases); изменения проходят [PR #12](https://github.com/LeonidYasin/proxydroid/pull/12). Статус CI: [Actions](https://github.com/LeonidYasin/proxydroid/actions).
 
 [Сайт проекта / документация](https://leonidyasin.github.io/proxydroid/) · [Скачать APK](https://github.com/LeonidYasin/proxydroid/releases)
 
 **LocProxyTV — новое отображаемое имя форка ProxyDroid.** Репозиторий `LeonidYasin/proxydroid`, сайт, applicationId `org.proxydroid`, имена классов/JNI, префикс APK `proxydroid-` и ключ подписи сохранены. Переименование не создаёт второе приложение и не требует удаления настроек; совместимое обновление устанавливается поверх.
+
+## Если порт живой, а сайты не открываются
+
+В карточке **Диагностика соединения** есть две независимые проверки:
+- **Проверить прокси / интернет**: адрес/локальный DNS прокси → TCP → proxy TLS (HTTPS proxy) → SOCKS/auth/HTTP CONNECT → TLS сайта → HTTP; плюс бинарный DoH к тем же 1.1.1.1/8.8.8.8, которые использует native DNS, и отдельный прямой HTTPS-контроль сети.
+- **Проверить YouTube через прокси**: сайт YouTube и миниатюра i.ytimg.com, DoH и прямой контроль. Это не тест видеопотока/googlevideo или аккаунта.
+
+Отчёт показывает этап, код, время, физическую сеть/адреса/DNS/MTU/Private DNS, snapshot фактически применённого allow/bypass routing и рекомендации. Его можно скопировать; credentials, сырые заголовки/cookies и тело сайтов не включаются. Адреса сети остаются — делитесь только с доверенной поддержкой. Работающий TCP-порт не доказывает исправность прокси. Подробности и порядок восстановления: [диагностика интернета/YouTube](docs/INTERNET_YOUTUBE.md).
 
 ## Быстрый старт
 

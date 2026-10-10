@@ -9,7 +9,11 @@ import android.net.LinkProperties
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import kotlinx.coroutines.CancellationException
-import org.proxydroid.utils.InternetProbe
+import org.proxydroid.utils.NetworkDiagnostics
+import org.proxydroid.utils.DeviceDiagnostics
+import org.proxydroid.utils.DiagnosticKind
+import org.proxydroid.utils.DiagnosticReport
+import org.proxydroid.utils.ProxyEndpoint
 import org.proxydroid.utils.BootStatus
 import android.preference.PreferenceManager
 import androidx.lifecycle.AndroidViewModel
@@ -55,6 +59,13 @@ data class MainUiState(
     val internetChecking: Boolean = false,
     val internetAvailable: Boolean? = null,
     val bootStatus: String? = null,
+    val diagnosticRunning: Boolean = false,
+    val diagnosticVisible: Boolean = false,
+    val diagnosticKind: DiagnosticKind = DiagnosticKind.INTERNET,
+    val diagnosticProgress: String? = null,
+    val diagnosticReport: DiagnosticReport? = null,
+    val diagnosticError: String? = null,
+
 )
 
 class MainViewModel @JvmOverloads constructor(app: Application,
@@ -80,7 +91,16 @@ class MainViewModel @JvmOverloads constructor(app: Application,
         override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) = refreshOnNetworkChange()
         override fun onLost(network: Network) = refreshOnNetworkChange()
     }
-    private fun refreshOnNetworkChange() { viewModelScope.launch { refreshGateway() } }
+    private var networkChangeJob: Job? = null
+    private fun refreshOnNetworkChange() { viewModelScope.launch {
+        invalidateDiagnostics()
+        networkChangeJob?.cancel()
+        networkChangeJob = viewModelScope.launch {
+            delay(750)
+            refreshGateway()
+            if (Utils.isWorking()) checkDiagnostics(showReport = _state.value.diagnosticVisible)
+        }
+    } }
 
 
     /** Job of the periodic liveness probe loop; null when not running. */
@@ -88,19 +108,29 @@ class MainViewModel @JvmOverloads constructor(app: Application,
     private var gatewayJob: Job? = null
     private var gatewayRequest = 0L
     private var internetJob: Job? = null
+    @Volatile private var diagnosticRequest = 0L
+    private var lastAutoEndpoint: ProxyEndpoint? = null
     private var aliveJob: Job? = null
 
     init {
         settings.registerOnSharedPreferenceChangeListener(prefListener)
         // Mirror service-side flags into UI state reactively.
         viewModelScope.launch {
-            combine(Utils.working, Utils.connecting) { w, c -> w to c }
-                .collect { (w, c) ->
+            combine(Utils.working, Utils.connecting, Utils.activeUpstream) { w, c, e -> Triple(w, c, e) }
+                .collect { (w, c, endpoint) ->
                     _state.value = _state.value.copy(isWorking = w, isConnecting = c)
                     // Auto-poll the proxy liveness while the tunnel is active.
-                    if (w) { startAlivePolling(); checkInternet() } else {
-                        stopAlivePolling(); internetJob?.cancel()
-                        _state.value = _state.value.copy(internetChecking = false, internetAvailable = null)
+                    if (w) {
+                        startAlivePolling()
+                        if (endpoint != null && lastAutoEndpoint !== endpoint) {
+                            lastAutoEndpoint = endpoint
+                            checkInternet()
+                        }
+                    } else {
+                        stopAlivePolling()
+                        if (lastAutoEndpoint != null) invalidateDiagnostics()
+                        lastAutoEndpoint = null
+                        _state.value = _state.value.copy(internetChecking = false, internetAvailable = null, isAlive = null)
                     }
                 }
         }
@@ -124,7 +154,7 @@ class MainViewModel @JvmOverloads constructor(app: Application,
     override fun onCleared() {
         super.onCleared()
         pollingJob?.cancel()
-        gatewayJob?.cancel(); internetJob?.cancel(); aliveJob?.cancel()
+        gatewayJob?.cancel(); internetJob?.cancel(); aliveJob?.cancel(); networkChangeJob?.cancel()
         if (networkRegistered) runCatching { cm?.unregisterNetworkCallback(networkCallback) }
         settings.unregisterOnSharedPreferenceChangeListener(prefListener)
     }
@@ -142,7 +172,9 @@ class MainViewModel @JvmOverloads constructor(app: Application,
     }
 
     fun updateProfile(transform: Profile.() -> Unit) {
-        val next = Profile().also { it.copyFrom(_state.value.profile) }.apply(transform)
+        val before = _state.value.profile
+        val next = Profile().also { it.copyFrom(before) }.apply(transform)
+        if (before.host != next.host || before.port != next.port || before.proxyType != next.proxyType || before.user != next.user || before.password != next.password || before.proxyApps != next.proxyApps || before.isBypassApps != next.isBypassApps) invalidateDiagnostics()
         _state.value = _state.value.copy(profile = next)
         // apply() changes memory synchronously and writes disk asynchronously.
         // Serialize UI edits here: an older IO coroutine must not overwrite a
@@ -183,23 +215,56 @@ class MainViewModel @JvmOverloads constructor(app: Application,
     }
 
     fun checkInternet() {
-        val endpoint = Utils.activeUpstream.value ?: return
-        if (!Utils.isWorking()) return
+        if (Utils.isWorking()) checkDiagnostics(showReport = false)
+    }
+
+    fun showDiagnostics() { _state.value = _state.value.copy(diagnosticVisible = true) }
+    fun dismissDiagnostics() { cancelDiagnostics(); _state.value = _state.value.copy(diagnosticVisible = false) }
+    fun cancelDiagnostics() {
+        diagnosticRequest++; internetJob?.cancel(); internetJob = null
+        _state.value = _state.value.copy(diagnosticRunning = false, internetChecking = false,
+            diagnosticProgress = "Check cancelled; no background probe continues", diagnosticReport = _state.value.diagnosticReport?.copy(stale = true))
+    }
+    private fun invalidateDiagnostics() {
+        diagnosticRequest++; internetJob?.cancel(); internetJob = null
+        _state.value = _state.value.copy(diagnosticRunning = false, internetChecking = false,
+            internetAvailable = null, diagnosticProgress = null, diagnosticReport = _state.value.diagnosticReport?.copy(stale = true))
+    }
+    fun checkYouTube() = checkDiagnostics(DiagnosticKind.YOUTUBE)
+    fun checkDiagnostics(kind: DiagnosticKind = DiagnosticKind.INTERNET, showReport: Boolean = true) {
         internetJob?.cancel()
-        _state.value = _state.value.copy(internetChecking = true, internetAvailable = null)
+        val request = ++diagnosticRequest
+        val active = Utils.activeUpstream.value.takeIf { Utils.isWorking() }
+        val profile = Profile().also { it.copyFrom(_state.value.profile) }
+        val profileId = _state.value.currentProfileId
+        val endpoint = active ?: ProxyEndpoint(profile.host, profile.port, profile.proxyType,
+            profile.user.takeIf { it.isNotEmpty() }, profile.password.takeIf { it.isNotEmpty() })
+        _state.value = _state.value.copy(diagnosticRunning = true, diagnosticVisible = showReport || _state.value.diagnosticVisible,
+            diagnosticKind = kind, diagnosticProgress = "Checking actual upstream / selected physical network…",
+            diagnosticError = null, diagnosticReport = _state.value.diagnosticReport?.copy(stale = true),
+            internetChecking = kind == DiagnosticKind.INTERNET && active != null,
+            internetAvailable = if (kind == DiagnosticKind.INTERNET) null else _state.value.internetAvailable)
         internetJob = viewModelScope.launch {
             try {
-                var available = false
-                repeat(2) { attempt ->
-                    if (!available) {
-                        if (attempt > 0) delay(1500)
-                        available = withContext(Dispatchers.IO) { InternetProbe.check(endpoint) }
+                val device = withContext(Dispatchers.IO) { DeviceDiagnostics.capture(getApplication(), profile, endpoint, active != null) }
+                val report = NetworkDiagnostics.run(kind, endpoint, device.lines, device.route) { done, total ->
+                    viewModelScope.launch {
+                        if (request == diagnosticRequest && _state.value.diagnosticRunning) _state.value = _state.value.copy(diagnosticProgress = "$done / $total destinations completed; HTTPS/DoH stages are bounded")
                     }
                 }
-                if (Utils.isWorking() && Utils.activeUpstream.value === endpoint) {
-                    _state.value = _state.value.copy(internetChecking = false, internetAvailable = available)
-                }
+                if (request != diagnosticRequest || _state.value.currentProfileId != profileId) return@launch
+                val stale = if (active != null) !Utils.isWorking() || Utils.activeUpstream.value !== active else Utils.isWorking()
+                val changedNetwork = withContext(Dispatchers.IO) { DeviceDiagnostics.physicalNetwork(getApplication()) } != device.network
+                if (request != diagnosticRequest || _state.value.currentProfileId != profileId) return@launch
+                _state.value = _state.value.copy(diagnosticRunning = false, internetChecking = false,
+                    diagnosticReport = report.copy(stale = stale || changedNetwork), diagnosticProgress = "Completed",
+                    internetAvailable = if (stale || changedNetwork) null else if (active != null && kind == DiagnosticKind.INTERNET) report.internetOk
+                        else if (active != null && report.internetOk) true else _state.value.internetAvailable)
             } catch (cancelled: CancellationException) { throw cancelled }
+            catch (failure: Exception) {
+                if (request == diagnosticRequest) _state.value = _state.value.copy(diagnosticRunning = false, internetChecking = false,
+                    diagnosticError = "Diagnostic setup failed (${failure.javaClass.simpleName}); check physical network and settings. Raw error text omitted.")
+            }
         }
     }
 
@@ -261,6 +326,7 @@ class MainViewModel @JvmOverloads constructor(app: Application,
 
     fun selectProfile(id: String) {
         if (id == _state.value.currentProfileId) return
+        invalidateDiagnostics()
         gatewayJob?.cancel(); gatewayRequest++
         viewModelScope.launch {
             // Save current profile JSON under its ID, then load the new one.
@@ -287,6 +353,7 @@ class MainViewModel @JvmOverloads constructor(app: Application,
     }
 
     fun newProfile(name: String) {
+        invalidateDiagnostics()
         gatewayJob?.cancel(); gatewayRequest++
         viewModelScope.launch {
             persistCurrentProfileJson(_state.value.profile)

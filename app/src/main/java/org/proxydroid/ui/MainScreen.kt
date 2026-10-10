@@ -107,6 +107,9 @@ fun MainScreen(
     onGatewayChange: (Boolean) -> Unit,
     onOpenUpdates: () -> Unit,
     onOpenYouTube: () -> Unit = {},
+    onRunDiagnostics: () -> Unit = {},
+    onCheckYouTube: () -> Unit = {},
+    onShowDiagnostics: () -> Unit = {},
 ) {
     val scroll = rememberScrollState()
     var menuOpen by remember { mutableStateOf(false) }
@@ -178,7 +181,8 @@ fun MainScreen(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            ConnectionCard(state = state, onToggle = onToggle, onCheckAlive = onCheckAlive, focusRequester = connectionFocus, onOpenYouTube = onOpenYouTube)
+            ConnectionCard(state = state, onToggle = onToggle, onCheckAlive = onCheckAlive, focusRequester = connectionFocus, onOpenYouTube = onOpenYouTube, onDiagnostics = onRunDiagnostics)
+            ConnectionDiagnostics(state, onRunDiagnostics, onCheckYouTube, onShowDiagnostics)
             AutoGatewayCard(
                 enabled = state.profile.useGatewayAsHost,
                 onChange = onGatewayChange,
@@ -232,6 +236,7 @@ private fun ConnectionCard(
     onCheckAlive: () -> Unit,
     focusRequester: FocusRequester,
     onOpenYouTube: () -> Unit,
+    onDiagnostics: () -> Unit,
 ) {
     // Request inside Scaffold's subcomposition, after the target exists.
     val inputMode = LocalInputModeManager.current
@@ -289,7 +294,7 @@ private fun ConnectionCard(
                 if (on) {
                     Spacer(Modifier.height(4.dp))
                     LivenessIndicator(state = state, onCheckAlive = onCheckAlive)
-                    InternetActions(state, onOpenYouTube, onCheckAlive)
+                    InternetActions(state, onOpenYouTube, onDiagnostics)
                 }
             }
             if (state.isConnecting) {
@@ -322,7 +327,7 @@ internal fun InternetActions(state: MainUiState, onOpenYouTube: () -> Unit, onRe
     when {
         state.internetChecking -> Text("Checking internet through proxy…", style = MaterialTheme.typography.bodySmall)
         state.internetAvailable == true -> {
-            Text("Internet verified through proxy", style = MaterialTheme.typography.bodySmall)
+            Text("HTTPS test succeeded through proxy — not a full VPN or video test", style = MaterialTheme.typography.bodySmall)
             TextButton(onClick = onOpenYouTube, modifier = Modifier
                 .bringIntoViewRequester(youtubeView)
                 .focusRequester(youtubeFocus).testTag("open-youtube")) { Text("Open YouTube") }
@@ -358,8 +363,8 @@ internal fun InternetActions(state: MainUiState, onOpenYouTube: () -> Unit, onRe
 @Composable
 private fun LivenessIndicator(state: MainUiState, onCheckAlive: () -> Unit) {
     val (dotColor, label) = when (state.isAlive) {
-        true -> Color(0xFF2BAA63) to "Proxy alive"
-        false -> Color(0xFFE53935) to "Proxy not responding"
+        true -> Color(0xFF2BAA63) to "TCP port reachable — forwarding/internet not proven"
+        false -> Color(0xFFE53935) to "TCP port unreachable — run detailed diagnostics"
         null -> Color(0xFF9E9E9E) to "Proxy not checked yet"
     }
     Column {
@@ -379,7 +384,7 @@ private fun LivenessIndicator(state: MainUiState, onCheckAlive: () -> Unit) {
                 onClick = onCheckAlive,
                 contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
             ) {
-                Text("Check", style = MaterialTheme.typography.bodySmall)
+                Text("TCP check", style = MaterialTheme.typography.bodySmall)
             }
         }
         // Show the concrete reason of the last failure instead of dying
