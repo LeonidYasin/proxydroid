@@ -10,6 +10,8 @@ package org.proxydroid.utils
 
 import android.content.Context
 import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import java.net.Inet4Address
 import java.net.InetSocketAddress
 import java.net.Socket
 
@@ -28,12 +30,21 @@ object NetworkUtils {
     fun getGatewayIp(context: Context): String? {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE)
             as? ConnectivityManager ?: return null
-        val network = cm.activeNetwork ?: return null
-        val lp = cm.getLinkProperties(network) ?: return null
-        return lp.routes
-            .firstOrNull { it.destination?.prefixLength == 0 }
-            ?.gateway
-            ?.hostAddress
+        // activeNetwork becomes the VPN itself once the tunnel is established.
+        // Inspect only physical networks, preferring the current default network.
+        val networks = (listOfNotNull(cm.activeNetwork) + cm.allNetworks.toList()).distinct()
+        for (network in networks) {
+            val caps = cm.getNetworkCapabilities(network) ?: continue
+            if (!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) ||
+                !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)) continue
+            val lp = cm.getLinkProperties(network) ?: continue
+            val gateway = lp.routes.asSequence()
+                .filter { it.isDefaultRoute }
+                .mapNotNull { it.gateway }
+                .firstOrNull { it is Inet4Address && !it.isAnyLocalAddress }
+            if (gateway != null) return gateway.hostAddress
+        }
+        return null
     }
 
     /**

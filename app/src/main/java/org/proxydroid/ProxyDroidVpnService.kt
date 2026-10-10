@@ -90,8 +90,9 @@ class ProxyDroidVpnService : VpnService() {
         if (bundle != null) {
             host = bundle.getString("host", "")
             port = bundle.getInt("port", 0)
-            user = bundle.getString("user", "")
-            password = bundle.getString("password", "")
+            val isAuth = bundle.getBoolean("isAuth", false)
+            user = if (isAuth) bundle.getString("user", "") else ""
+            password = if (isAuth) bundle.getString("password", "") else ""
             proxyType = bundle.getString("proxyType", "socks5")
             proxyApps = bundle.getString("proxyApps", "")
             isBypassApps = bundle.getBoolean("isBypassApps", false)
@@ -126,7 +127,7 @@ class ProxyDroidVpnService : VpnService() {
             }
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(
                 NOTIFICATION_ID,
                 createNotification(),
@@ -191,6 +192,8 @@ class ProxyDroidVpnService : VpnService() {
         Utils.setConnecting(true)
 
         try {
+            require(host.isNotBlank()) { "Proxy host must not be blank" }
+            require(port in 1..65535) { "Proxy port must be from 1 to 65535" }
             // Configure VPN. DNS server is in-tunnel; the Rust tun2socks
             // intercepts UDP/53 and forwards via DoH through the upstream SOCKS5.
             val builder = Builder()
@@ -200,37 +203,29 @@ class ProxyDroidVpnService : VpnService() {
                 .addRoute(VPN_ROUTE, 0)
                 .addDnsServer("10.0.0.2")
 
-            // Always exclude our own UID so tun2socks can reach the upstream
-            // proxy without the packets looping back into our own tun.
-            try {
-                builder.addDisallowedApplication(packageName)
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to disallow self: $packageName", e)
-            }
-
-            // Add per-app proxy if configured
-            if (proxyApps.isNotEmpty()) {
-                val apps = proxyApps.split("|")
-                if (isBypassApps) {
-                    // Bypass mode: exclude these apps from VPN
-                    for (app in apps) {
-                        if (app.isNotEmpty()) {
-                            try {
-                                builder.addDisallowedApplication(app)
-                            } catch (e: Exception) {
-                                Log.w(TAG, "Failed to exclude app: $app", e)
-                            }
-                        }
+            // Android forbids mixing allowed and disallowed application lists.
+            val apps = proxyApps.split("|").filter { it.isNotBlank() && it != packageName }.distinct()
+            if (proxyApps.isNotBlank() && !isBypassApps) {
+                var added = 0
+                for (app in apps) {
+                    try {
+                        builder.addAllowedApplication(app)
+                        added++
+                    } catch (e: android.content.pm.PackageManager.NameNotFoundException) {
+                        Log.w(TAG, "Selected app is no longer installed: $app", e)
                     }
-                } else {
-                    // Proxy mode: only proxy these apps
+                }
+                // An empty allow-list means ALL apps. Never silently broaden it.
+                check(added > 0) { "No selected proxy applications are installed" }
+                // Our UID is not in the allow-list, so the upstream socket bypasses VPN.
+            } else {
+                builder.addDisallowedApplication(packageName)
+                if (isBypassApps) {
                     for (app in apps) {
-                        if (app.isNotEmpty()) {
-                            try {
-                                builder.addAllowedApplication(app)
-                            } catch (e: Exception) {
-                                Log.w(TAG, "Failed to allow app: $app", e)
-                            }
+                        try {
+                            builder.addDisallowedApplication(app)
+                        } catch (e: android.content.pm.PackageManager.NameNotFoundException) {
+                            Log.w(TAG, "Bypass app is no longer installed: $app", e)
                         }
                     }
                 }

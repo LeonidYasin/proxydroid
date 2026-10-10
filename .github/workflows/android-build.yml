@@ -1,6 +1,8 @@
 name: Android Build
 
 on:
+  pull_request:
+    branches: [ main, master ]
   push:
     branches: [ master, main, 'claude/**', 'feature/**', 'test/**', 'refactor/**', 'feat/**' ]
 
@@ -91,6 +93,9 @@ jobs:
       run: |
         echo "sdk.dir=$ANDROID_HOME" > local.properties
         echo "ndk.dir=$ANDROID_NDK_HOME" >> local.properties
+
+    - name: Check Android TV settings contract
+      run: python3 scripts/check_tv_contract.py
 
     - name: Build Debug APK
       run: ./gradlew assembleDebug --stacktrace

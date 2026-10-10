@@ -14,7 +14,7 @@ import org.proxydroid.utils.Base64
 class Profile {
     var name: String = ""
     var host: String = ""
-    var port: Int = 0
+    var port: Int = DEFAULT_PORT
     var user: String = ""
     var password: String = ""
     var domain: String = ""
@@ -51,7 +51,7 @@ class Profile {
     fun init() {
         name = ""
         host = ""
-        port = 0
+        port = DEFAULT_PORT
         user = ""
         password = ""
         domain = ""
@@ -83,7 +83,7 @@ class Profile {
         proxyApps = settings.getString("proxyApps", "").orEmpty()
         bypassAddrs = settings.getString("bypassAddrs", "").orEmpty()
 
-        port = settings.getString("port", "")?.toIntOrNull() ?: 0
+        port = settings.getString("port", DEFAULT_PORT.toString())?.toIntOrNull() ?: DEFAULT_PORT
 
         isAuth = settings.getBoolean("isAuth", false)
         isNTLM = settings.getBoolean("isNTLM", false)
@@ -154,7 +154,7 @@ class Profile {
             val json = JSONParser().parse(encoded) as JSONObject
             name = json["name"] as? String ?: ""
             host = json["host"] as? String ?: ""
-            port = (json["port"] as? Number)?.toInt() ?: 0
+            port = (json["port"] as? Number)?.toInt() ?: DEFAULT_PORT
             user = json["user"] as? String ?: ""
             password = json["password"] as? String ?: ""
             domain = json["domain"] as? String ?: ""
@@ -204,6 +204,7 @@ class Profile {
     }
 
     companion object {
+        const val DEFAULT_PORT = 10808
         private const val TAG = "Profile"
 
         @JvmStatic

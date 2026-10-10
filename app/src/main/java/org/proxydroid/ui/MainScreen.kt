@@ -157,16 +157,16 @@ fun MainScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             ConnectionCard(state = state, onToggle = onToggle, onCheckAlive = onCheckAlive)
+            AutoGatewayCard(
+                enabled = state.profile.useGatewayAsHost,
+                onChange = { onProfileEdit { useGatewayAsHost = it } },
+            )
             ProfileCard(
                 state = state,
                 onSelectProfile = onSelectProfile,
                 onNewProfile = onNewProfile,
             )
             ProxyForm(profile = state.profile, edit = onProfileEdit)
-            AutoGatewayCard(
-                enabled = state.profile.useGatewayAsHost,
-                onChange = { onProfileEdit { useGatewayAsHost = it } },
-            )
             AutoStartOnBootCard(
                 enabled = state.profile.autoStartOnBoot,
                 onChange = { onProfileEdit { autoStartOnBoot = it } },
@@ -434,21 +434,22 @@ private fun ProxyForm(profile: Profile, edit: (Profile.() -> Unit) -> Unit) {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                OutlinedTextField(
+                EditableSettingField(
                     value = profile.host,
                     onValueChange = { v -> edit { host = v.trim() } },
-                    label = { Text("Host") },
+                    label = "Host",
                     singleLine = true,
                     enabled = !profile.useGatewayAsHost,
                     modifier = Modifier.weight(2f),
                 )
-                OutlinedTextField(
+                EditableSettingField(
                     value = if (profile.port == 0) "" else profile.port.toString(),
-                    onValueChange = { v ->
-                        val n = v.filter { it.isDigit() }.take(5).toIntOrNull() ?: 0
-                        edit { port = n }
+                    onValueChange = { v -> edit { port = v.toInt() } },
+                    validate = { v ->
+                        if (org.proxydroid.utils.isValidProxyPort(v)) null
+                        else "Enter a port from 1 to 65535"
                     },
-                    label = { Text("Port") },
+                    label = "Port",
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.weight(1f),
@@ -463,17 +464,17 @@ private fun ProxyForm(profile: Profile, edit: (Profile.() -> Unit) -> Unit) {
             )
             AnimatedVisibility(visible = profile.isAuth) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
+                    EditableSettingField(
                         value = profile.user,
                         onValueChange = { v -> edit { user = v } },
-                        label = { Text("Username") },
+                        label = "Username",
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    OutlinedTextField(
+                    EditableSettingField(
                         value = profile.password,
                         onValueChange = { v -> edit { password = v } },
-                        label = { Text("Password") },
+                        label = "Password",
                         singleLine = true,
                         visualTransformation = PasswordVisualTransformation(),
                         modifier = Modifier.fillMaxWidth(),
@@ -484,10 +485,10 @@ private fun ProxyForm(profile: Profile, edit: (Profile.() -> Unit) -> Unit) {
                         onChange = { edit { isNTLM = it } },
                     )
                     AnimatedVisibility(visible = profile.isNTLM) {
-                        OutlinedTextField(
+                        EditableSettingField(
                             value = profile.domain,
                             onValueChange = { v -> edit { domain = v } },
-                            label = { Text("NTLM Domain") },
+                            label = "NTLM Domain",
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
                         )
@@ -546,17 +547,17 @@ private fun AdvancedSection(
                     )
                     AnimatedVisibility(visible = profile.isAutoConnect) {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(
+                            EditableSettingField(
                                 value = profile.ssid,
                                 onValueChange = { v -> edit { ssid = v } },
-                                label = { Text("Bind SSID (comma-separated)") },
+                                label = "Bind SSID (comma-separated)",
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth(),
                             )
-                            OutlinedTextField(
+                            EditableSettingField(
                                 value = profile.excludedSsid,
                                 onValueChange = { v -> edit { excludedSsid = v } },
-                                label = { Text("Exclude SSID (comma-separated)") },
+                                label = "Exclude SSID (comma-separated)",
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth(),
                             )
