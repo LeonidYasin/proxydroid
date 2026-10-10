@@ -136,7 +136,7 @@ mindmap
       Device QA
         real boot/standby/consent · Wi-Fi/Ethernet · TUN/DNS · YouTube · signed installer/ABI
       Документы
-        README · AUTO_GATEWAY · ARCHITECTURE · BOOT_AUTOSTART · INTERNET_YOUTUBE · TV_REVIEW · RELEASE_SIGNING
+        README · AUTO_GATEWAY · ARCHITECTURE · BOOT_AUTOSTART · INTERNET_YOUTUBE · TV_REVIEW · RELEASE_SIGNING · APP_UPDATES · GITHUB_PAGES / static Pages generator
       История · privacy
         CHANGELOG · privacy_policy · archived SESSION-2026-09-30 · GPL headers
       План LAN discovery
@@ -243,7 +243,7 @@ Signed universal + ARM32
 - **Android tests:** EditableSettingField · MainScreenTv · InternetActions · GatewayStartup · host SOCKS/HTTP fixtures
 - **Скрипты:** check_tv_contract · test_build_metadata · run_emulator_tests · local/integration runners
 - **Device QA:** real boot/standby/consent · Wi-Fi/Ethernet · TUN/DNS · YouTube · signed installer/ABI
-- **Документы:** README · AUTO_GATEWAY · ARCHITECTURE · BOOT_AUTOSTART · INTERNET_YOUTUBE · TV_REVIEW · RELEASE_SIGNING
+- **Документы:** README · AUTO_GATEWAY · ARCHITECTURE · BOOT_AUTOSTART · INTERNET_YOUTUBE · TV_REVIEW · RELEASE_SIGNING · APP_UPDATES · GITHUB_PAGES / static Pages generator
 - **История/privacy:** CHANGELOG · privacy_policy · archived SESSION-2026-09-30 · GPL headers
 - **План LAN discovery:** explicit approved LAN scan → protocol/auth/TLS checks → detailed catalog → add profile/connect
 - **План данных:** network identity + host/port/protocol · timestamps/latency/status · unknown fields honest · dedup/TTL

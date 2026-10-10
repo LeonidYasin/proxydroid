@@ -1,11 +1,13 @@
 # Roadmap / План развития
 
-Это план текущей ветки, а не обещание наличия каждой функции в `main` или APK. Версия source: **3.8.0**. Актуальные публикации: [Releases](https://github.com/LeonidYasin/proxydroid/releases). Полная структура: [mind map](docs/MINDMAP.md).
+Это план текущей ветки, а не обещание наличия каждой функции в `main` или APK. Версия source: **3.8.1**. Актуальные публикации: [Releases](https://github.com/LeonidYasin/proxydroid/releases). Полная структура: [mind map](docs/MINDMAP.md).
 
 ## Уже реализовано в исходниках
 
 - VpnService/JNI/Rust TCP proxy, DNS через DoH, профили и app allow/bypass lists.
 - TV launcher/banner, DPAD, click-to-edit, default port 10808, gateway/Host layout.
+- Updater 3.8.1: installer из visible Activity, повтор по полному пути APK, resume после разрешения источника.
+- GitHub Pages с едиными source docs и интерактивной картой.
 - Signed universal + armeabi-v7a; Stable/Test updater с проверкой реального APK и подписи.
 - Определение gateway при старте/resume/смене сети, сохранение Host только в auto-режиме.
 - Foreground boot start без фонового Activity, ожидание сети/прокси до 120 секунд, boot status.

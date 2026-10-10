@@ -32,7 +32,7 @@ for src,slug,title in DOCS:
  if slug=='mindmap-text':rendered='<p><a class="button" href="mindmap.html">Открыть интерактивную карту</a></p>'+rendered
  sidebar='<aside class="sidenav" aria-label="Разделы документации">'+''.join('<a href="'+s+'.html"'+(' aria-current="page"' if s==slug else '')+'>'+html.escape(t)+'</a>' for _,s,t in DOCS)+'</aside>'
  (OUT/(slug+'.html')).write_text(page(title,'<div class="doclayout">'+sidebar+'<article class="article">'+rendered+'</article></div>'))
-maptext=(ROOT/'docs/MINDMAP.html').read_text();maptext=maptext.replace('<body>','<body><p style="margin:16px 24px"><a href="index.html">← Сайт ProxyDroid</a> · <a href="readme.html">Документация</a></p>')
+maptext=(ROOT/'docs/MINDMAP.html').read_text();maptext=maptext.replace('</style>','</style><p style="margin:16px 24px"><a href="index.html">← Сайт ProxyDroid</a> · <a href="readme.html">Документация</a></p>',1)
 maptext=maptext.replace('https://github.com/LeonidYasin/proxydroid/blob/fix/android-tv-dpad-default-port/docs/MINDMAP.md','mindmap-text.html').replace('https://github.com/LeonidYasin/proxydroid/blob/fix/android-tv-dpad-default-port/README.md','readme.html').replace('https://github.com/LeonidYasin/proxydroid/blob/fix/android-tv-dpad-default-port/ROADMAP.md','roadmap.html')
 (OUT/'mindmap.html').write_text(maptext)
 doclinks=''.join('<li><a href="'+slug+'.html">'+title+' →</a></li>' for _,slug,title in DOCS if slug!='archive')

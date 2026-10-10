@@ -9,7 +9,7 @@
 - Добавлены instrumented тесты APK path и intent grants. Реальная установка на OEM TV требует отдельной проверки.
 
 
-## 3.8.0 — текущая ветка, проверять статус публикации в Releases
+## 3.8.0 — gateway, boot и YouTube (RC)
 
 - HTTPS интернет через actual upstream + предложение YouTube после успеха.
 - Gateway lookup startup/resume/physical network callback; Host write только auto.

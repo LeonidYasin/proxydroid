@@ -1,6 +1,6 @@
 # Privacy policy / Конфиденциальность
 
-Описание текущего открытого форка ProxyDroid (ветка 3.8.0); исходники позволяют проверить перечисленные механизмы. Это не обещание безопасности любых сторонних прокси, прошивок или сайтов.
+Описание текущего открытого форка ProxyDroid (серия 3.8.x); исходники позволяют проверить перечисленные механизмы. Это не обещание безопасности любых сторонних прокси, прошивок или сайтов.
 
 ## Что хранится на устройстве
 
@@ -28,3 +28,7 @@ VPN consent, boot receive, internet/network-state, foreground service и APK-ins
 Нет встроенного cookie storage для internet checks/updater. Браузер/YouTube могут использовать свои cookies. SharedPreferences privacy не означает криптографическое шифрование; compromised/rooted device или недоверенный proxy остаются рисками.
 
 Для вопросов/ошибок используйте [issues репозитория](https://github.com/LeonidYasin/proxydroid/issues), но не прикладывайте keystore, passwords, tokens, private backups или необработанные конфиденциальные логи. Изменения политики отслеживаются в Git history.
+
+## Сайт проекта
+
+GitHub Pages размещает статическую документацию. Нет cookies/analytics/трекеров приложения на сайте. Главная делает запрос к публичному GitHub API списка Releases для ссылок APK; GitHub/Pages получает обычные HTTP данные (например IP и user-agent) согласно своей политике. APK скачиваются с GitHub Releases, а не с постороннего зеркала.

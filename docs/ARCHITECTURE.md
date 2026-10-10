@@ -35,3 +35,9 @@ AppManager / BypassListActivity — выбор приложений/исключ
 ## Known debt / test scope
 
 Legacy NTLM/PAC/DNS toggles не соответствуют полноценной реализации всех старых режимов; profile rename/delete bookkeeping требует дополнительных тестов. TCP check ≠ internet check ≠ TUN end-to-end. Android always-on, OEM boot и actual installer требуют device QA. Нельзя трактовать зелёные unit/fixture tests как отсутствие всех дефектов.
+
+## Updater / сайт 3.8.1
+
+UpdateViewModel pendingInstall → resumed Activity → IO verifyReady → APK content URI → ACTION_INSTALL_PACKAGE / VIEW fallback. Permission return возобновляет установку; full path action повторяет её без скачки. Подробнее [обновления](APP_UPDATES.md).
+
+`scripts/build_site.py` строит GitHub Pages из canonical Markdown, а mind map копируется в интерактивную страницу. Публикация не имеет доступа к signing secrets. Подробнее [сайт](GITHUB_PAGES.md).
