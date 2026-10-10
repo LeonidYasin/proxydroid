@@ -307,11 +307,9 @@ jobs:
 
   emulator-test:
     runs-on: ubuntu-latest
-    # The Android emulator job is not reliable on the hosted runner (KVM / AVD
-    # provisioning flakes), and it never reflects actual APK quality. Keep it
-    # running for observability but do not let it fail the whole workflow.
-    # Remove this line when the job becomes stable.
-    continue-on-error: true
+    # Focus/editor regressions and protocol tests are real failures, not flakes.
+    # Start the required local proxy fixtures and keep this job blocking.
+    timeout-minutes: 25
     needs: build
 
     steps:
@@ -402,4 +400,15 @@ jobs:
         api-level: 30
         target: google_apis
         arch: x86_64
-        script: ./gradlew connectedAndroidTest --stacktrace
+        script: bash scripts/run_emulator_tests.sh
+
+    - name: Upload instrumented test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: instrumented-test-results
+        path: |
+          app/build/reports/androidTests/
+          app/build/outputs/androidTest-results/
+        if-no-files-found: warn
+        retention-days: 7

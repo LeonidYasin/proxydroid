@@ -1,6 +1,10 @@
 package org.proxydroid.ui
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.input.InputMode
+import androidx.compose.ui.input.InputModeManager
+import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -20,18 +24,20 @@ import org.junit.Rule
 import org.junit.Test
 import org.proxydroid.utils.isValidProxyPort
 
-@OptIn(ExperimentalTestApi::class)
+@OptIn(ExperimentalTestApi::class, ExperimentalComposeUiApi::class)
 class EditableSettingFieldTest {
     @get:Rule val compose = createComposeRule()
 
     @Test fun focusDoesNotEditButDpadOkDoes() {
         val focus = FocusRequester()
+        lateinit var inputMode: InputModeManager
         compose.setContent {
+            inputMode = LocalInputModeManager.current
             MaterialTheme {
                 EditableSettingField("10808", {}, "Port", Modifier.focusRequester(focus))
             }
         }
-        compose.runOnIdle { focus.requestFocus() }
+        compose.runOnIdle { inputMode.requestInputMode(InputMode.Keyboard); focus.requestFocus() }
         compose.onNodeWithTag("setting-Port").assertIsFocused()
         compose.onNodeWithTag("editor-Port").assertDoesNotExist()
         compose.onNodeWithTag("setting-Port").performKeyInput {

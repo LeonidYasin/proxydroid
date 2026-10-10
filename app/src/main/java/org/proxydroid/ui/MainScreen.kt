@@ -59,6 +59,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.input.InputMode
+import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.testTag
@@ -211,6 +214,7 @@ fun MainScreen(
     }
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun ConnectionCard(
     state: MainUiState,
@@ -219,9 +223,13 @@ private fun ConnectionCard(
     focusRequester: FocusRequester,
 ) {
     // Request inside Scaffold's subcomposition, after the target exists.
+    val inputMode = LocalInputModeManager.current
     var initialFocusSet by remember { mutableStateOf(false) }
     LaunchedEffect(state.isConnecting) {
         if (!initialFocusSet && !state.isConnecting) {
+            // Foundation switches/buttons reject focus in touch mode. Enter
+            // DPAD/keyboard mode before assigning the initial remote focus.
+            inputMode.requestInputMode(InputMode.Keyboard)
             focusRequester.requestFocus()
             initialFocusSet = true
         }

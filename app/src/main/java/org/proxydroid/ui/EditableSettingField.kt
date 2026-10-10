@@ -75,6 +75,12 @@ internal fun EditableSettingField(
                     modifier = Modifier.fillMaxWidth()
                         .focusRequester(focusRequester).testTag("editor-$label"),
                 )
+                // AlertDialog subcomposes its content: request focus from the
+                // editor's own composition, only after its node is attached.
+                LaunchedEffect(Unit) {
+                    focusRequester.requestFocus()
+                    keyboard?.show()
+                }
             },
             confirmButton = {
                 TextButton(onClick = {
@@ -89,10 +95,5 @@ internal fun EditableSettingField(
                 TextButton(onClick = { editing = false }) { Text("Cancel") }
             },
         )
-        // Only an explicit click/DPAD OK creates this editor and shows the IME.
-        LaunchedEffect(Unit) {
-            focusRequester.requestFocus()
-            keyboard?.show()
-        }
     }
 }
