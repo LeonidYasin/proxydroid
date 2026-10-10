@@ -52,6 +52,18 @@ class NetworkDiagnosticsTest {
         val e = assertThrows(ProbeProblem::class.java) { ProxyTransport.statusCode("bad response $secret") }
         assertFalse(e.safeDetail.contains(secret))
     }
+    @Test fun tlsCertificateAndTimeoutCausesHaveSpecificSafeCodes() {
+        val expired = javax.net.ssl.SSLHandshakeException("raw sentinel").apply { initCause(java.security.cert.CertificateExpiredException()) }
+        assertEquals("TLS_CERTIFICATE_EXPIRED", ProxyTransport.classify(ProbeStage.TARGET_TLS, expired).code)
+        val timeout = javax.net.ssl.SSLException("raw sentinel").apply { initCause(java.net.SocketTimeoutException()) }
+        assertEquals("TIMEOUT", ProxyTransport.classify(ProbeStage.TARGET_TLS, timeout).code)
+        assertFalse(ProxyTransport.classify(ProbeStage.TARGET_TLS, expired).safeDetail.contains("sentinel"))
+    }
+    @Test fun unfinishedChecksNeverClaimPortIsDead() {
+        val unfinished = TargetDiagnostic(web, listOf(ProbeStep(ProbeStage.BUDGET, false, "incomplete", 65000)), false, "CHECK_DEADLINE")
+        val advice = DiagnosticReport.recommendations(listOf(unfinished), DiagnosticKind.INTERNET)
+        assertFalse(advice.any { it.startsWith("TCP-порт прокси недоступен") })
+    }
     @Test fun closedRegistryImmediatelyClosesNewSocket() {
         val registry = ProbeSockets(); val socket = Socket(); registry.close()
         assertThrows(java.net.SocketException::class.java) { registry.register(socket) }

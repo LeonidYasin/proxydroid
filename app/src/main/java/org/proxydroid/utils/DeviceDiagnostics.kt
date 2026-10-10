@@ -42,6 +42,9 @@ object DeviceDiagnostics {
         lines += "VPN consent granted=${VpnService.prepare(context) == null}; service flag working=${Utils.isWorking()}; native launch snapshot ${if (routing == null) "not available" else "recorded; not a runtime health probe"}"
         if (routing != null) {
             lines += "ACTUAL routing: ${if (routing.allowed == null) "all apps except exclusions (${routing.excluded.size})" else "allow-list (${routing.allowed.size} installed apps)"}; session age ${((System.currentTimeMillis() - routing.startedAt) / 1000).coerceAtLeast(0)} s"
+            val appliedPackages = (routing.allowed ?: routing.excluded).sorted()
+            lines += "ACTUAL ${if (routing.allowed == null) "excluded" else "allowed"} packages: ${appliedPackages.take(64).joinToString()}${if (appliedPackages.size > 64) " … (first 64 shown)" else ""}"
+            lines += "App routing is a SESSION snapshot; edits to selected apps require reconnect, just like endpoint/auth edits."
             for (pkg in listOf("com.google.android.youtube.tv", "com.google.android.youtube")) {
                 val installed = runCatching { context.packageManager.getApplicationInfo(pkg, 0) }.isSuccess
                 lines += "${if (pkg.endsWith(".tv")) "YouTube TV" else "YouTube phone"}: ${if (!installed) "not found / not visible" else if (routing.routed(pkg)) "included in ACTUAL VPN routing" else "BYPASSED / not in active allow-list"}"

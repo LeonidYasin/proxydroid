@@ -26,6 +26,13 @@ class ConnectionDiagnosticsTest {
         compose.onNodeWithText("Отменить проверку").performClick()
         compose.runOnIdle { assertTrue(cancelled) }
     }
+    @Test fun reportHasExplicitTvScrollAndCopyControls() {
+        val report = org.proxydroid.utils.DiagnosticReport(org.proxydroid.utils.DiagnosticKind.INTERNET, "test", emptyList(), emptyList())
+        compose.setContent { MaterialTheme { ConnectionDiagnosticDialog(MainUiState(diagnosticVisible = true, diagnosticReport = report), {}, {}) } }
+        compose.onNodeWithTag("scroll-diagnostic-down").assertIsDisplayed().performClick()
+        compose.onNodeWithTag("scroll-diagnostic-up").assertIsDisplayed().performClick()
+        compose.onNodeWithTag("copy-diagnostic-report").assertIsDisplayed()
+    }
     @Test fun busyButtonsDoNotLaunchDuplicateChecks() {
         compose.setContent { MaterialTheme { ConnectionDiagnostics(MainUiState(diagnosticRunning = true), {}, {}, {}) } }
         compose.onNodeWithTag("check-proxy-internet").assertIsNotEnabled()

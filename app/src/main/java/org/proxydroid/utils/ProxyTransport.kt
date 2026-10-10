@@ -10,7 +10,7 @@ import javax.net.ssl.SSLSocket
 import javax.net.ssl.SSLSocketFactory
 
 enum class ProbeStage(val label: String) {
-    DNS("DNS / адрес прокси"), TCP("TCP до прокси"), PROXY_TLS("TLS до HTTPS-прокси"),
+    DNS("DNS / адрес узла"), TCP("TCP-соединение"), PROXY_TLS("TLS до HTTPS-прокси"),
     AUTH("Протокол / авторизация прокси"), CONNECT("CONNECT / удалённый адрес"),
     TARGET_TLS("TLS до сайта"), HTTP("Ответ HTTPS"), DOH("DNS-over-Ответ HTTPS"), BUDGET("Общий лимит / незавершённая проверка")
 }
@@ -23,7 +23,16 @@ class ProbeRoute(val resolve: (String) -> InetAddress = InetAddress::getByName,
 object ProxyTransport {
     fun classify(stage: ProbeStage, failure: Exception): ProbeProblem {
         if (failure is ProbeProblem) return failure
-        val code = when (failure) {
+        val causes = generateSequence<Throwable>(failure) { it.cause }.take(8).toList()
+        val certificateCode = when {
+            causes.any { it is java.net.SocketTimeoutException } -> "TIMEOUT"
+            causes.any { it is java.security.cert.CertificateExpiredException } -> "TLS_CERTIFICATE_EXPIRED"
+            causes.any { it is java.security.cert.CertificateNotYetValidException } -> "TLS_CERTIFICATE_NOT_YET_VALID_CHECK_CLOCK"
+            causes.any { it is java.security.cert.CertPathValidatorException } -> "TLS_CERTIFICATE_PATH_VALIDATION_FAILED"
+            failure is javax.net.ssl.SSLException && causes.any { it.message?.contains("No subject alternative", ignoreCase = true) == true || it.message?.contains("hostname", ignoreCase = true) == true } -> "TLS_HOSTNAME_VERIFICATION_FAILED"
+            else -> null
+        }
+        val code = certificateCode ?: when (failure) {
             is java.net.UnknownHostException -> "DNS_LOOKUP_FAILED"
             is java.net.NoRouteToHostException -> "NO_ROUTE"
             is java.net.ConnectException -> "CONNECTION_REFUSED_OR_UNREACHABLE"
@@ -36,7 +45,7 @@ object ProxyTransport {
             is IllegalArgumentException -> "BAD_INPUT_OR_PROTOCOL"
             else -> "IO_OR_PROTOCOL_ERROR"
         }
-        return ProbeProblem(stage, code, "$code (${failure.javaClass.simpleName}); no raw server/error text retained")
+        return ProbeProblem(stage, code, "$code (${causes.joinToString(" → ") { it.javaClass.simpleName }}); no raw server/error text retained")
     }
     fun <T> step(stage: ProbeStage, detail: String, observe: (ProbeStep) -> Unit, block: () -> T): T {
         val started = System.nanoTime()
@@ -130,9 +139,9 @@ object ProxyTransport {
                     step(ProbeStage.CONNECT, "HTTP CONNECT 200; configured Basic authorization accepted if supplied", observe) {
                         val auth = endpoint.user?.let { "Proxy-Authorization: Basic " + Base64.encodeToString("$it:${endpoint.password ?: ""}".toByteArray(Charsets.UTF_8), Base64.NO_WRAP) + "\r\n" } ?: ""
                         output.writeBytes("CONNECT $target:$targetPort HTTP/1.1\r\nHost: $target:$targetPort\r\n$auth\r\n"); output.flush()
-                        val code = statusCode(readLine(input))
+                        val code = statusCode(readLine(input, ProbeStage.CONNECT), ProbeStage.CONNECT)
                         expect(code == 200, if (code == 407) ProbeStage.AUTH else ProbeStage.CONNECT, "CONNECT_HTTP_$code", "HTTP CONNECT status=$code; 407=proxy auth, 403=proxy policy, 502/503/504=proxy upstream/DNS/timeout (not uniquely identified)")
-                        readHeaders(input)
+                        readHeaders(input, ProbeStage.CONNECT)
                     }
                 }
                 else -> throw ProbeProblem(ProbeStage.AUTH, "UNSUPPORTED_PROXY", "Unsupported proxy type; use SOCKS5, SOCKS4, HTTP or HTTPS CONNECT")
@@ -140,19 +149,19 @@ object ProxyTransport {
             return socket
         } catch (failure: Exception) { runCatching { socket.close() }; runCatching { raw.close() }; throw failure }
     }
-    fun statusCode(line: String): Int = Regex("HTTP/1\\.[01] ([0-9]{3})(?: .*|$)").matchEntire(line)?.groupValues?.get(1)?.toInt()
-        ?: throw ProbeProblem(ProbeStage.HTTP, "INVALID_HTTP_STATUS", "Malformed/non-HTTP response; raw line omitted")
-    fun readHeaders(input: DataInputStream): Map<String, String> {
+    fun statusCode(line: String, stage: ProbeStage = ProbeStage.HTTP): Int = Regex("HTTP/1\\.[01] ([0-9]{3})(?: .*|$)").matchEntire(line)?.groupValues?.get(1)?.toInt()
+        ?: throw ProbeProblem(stage, if (stage == ProbeStage.CONNECT) "WRONG_PROXY_PROTOCOL" else "INVALID_HTTP_STATUS", "Malformed/non-HTTP response; verify proxy type/port; raw line omitted")
+    fun readHeaders(input: DataInputStream, stage: ProbeStage = ProbeStage.HTTP): Map<String, String> {
         val headers = mutableMapOf<String, String>(); var bytes = 0
         while (true) {
-            val line = readLine(input); bytes += line.length + 2
-            require(bytes <= 8192) { "Oversized headers" }
+            val line = readLine(input, stage); bytes += line.length + 2
+            expect(bytes <= 8192, stage, "HTTP_HEADERS_LIMIT", "HTTP headers exceeded 8192-byte diagnostic limit")
             if (line.isEmpty()) return headers
-            val pos = line.indexOf(':'); require(pos > 0) { "Malformed header" }
+            val pos = line.indexOf(':'); expect(pos > 0, stage, "INVALID_HTTP_HEADER", "Malformed HTTP header; raw header omitted")
             val name = line.substring(0, pos).lowercase(); val value = line.substring(pos + 1).trim()
             // Never retain cookies, auth challenges, locations or arbitrary server metadata.
             if (name in setOf("content-length", "transfer-encoding", "content-type", "content-encoding")) {
-                require(!headers.containsKey(name)) { "Duplicate framing header" }; headers[name] = value
+                expect(!headers.containsKey(name), stage, "DUPLICATE_HTTP_FRAMING", "Duplicate HTTP framing/content header; raw values omitted"); headers[name] = value
             }
         }
     }
@@ -169,13 +178,13 @@ object ProxyTransport {
             override fun read(b: ByteArray, off: Int, len: Int): Int { prepare(); return `in`.read(b, off, len) }
         })
     }
-    fun readLine(input: DataInputStream): String {
+    fun readLine(input: DataInputStream, stage: ProbeStage = ProbeStage.HTTP): String {
         val line = StringBuilder()
         while (line.length < 1024) {
             val byte = input.readUnsignedByte()
             if (byte == 10) return line.toString().removeSuffix("\r")
             line.append(byte.toChar())
         }
-        error("Oversized HTTP line")
+        throw ProbeProblem(stage, "HTTP_LINE_LIMIT", "HTTP line exceeded 1024-byte diagnostic limit; raw text omitted")
     }
 }

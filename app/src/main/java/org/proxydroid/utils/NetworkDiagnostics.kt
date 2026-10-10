@@ -25,13 +25,13 @@ data class DiagnosticReport(val kind: DiagnosticKind, val endpoint: String, val 
     val internetOk get() = results.any { !it.target.direct && !it.target.doh && it.success }
     fun text(): String = buildString {
         appendLine("LocProxyTV — ${if (kind == DiagnosticKind.YOUTUBE) "YouTube" else "proxy / internet"} diagnostics")
-        appendLine("Checked: ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z", Locale.US).format(Date(checkedAt))}")
-        if (stale) appendLine("STALE: network/profile/service changed; run the test again.")
-        appendLine("Upstream: $endpoint (credentials omitted)")
+        appendLine("Время проверки: ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z", Locale.US).format(Date(checkedAt))}")
+        if (stale) appendLine("УСТАРЕЛО: сеть/профиль/сервис изменились — повторите проверку.")
+        appendLine("Upstream: $endpoint (credentials скрыты)")
         environment.forEach { appendLine(it) }
         appendLine()
         results.forEach { r ->
-            appendLine("${if (r.success) "PASS" else "FAIL"} · ${r.target.name} · ${r.target.host}${r.target.path} · ${if (r.target.direct) "DIRECT reference, not proxy" else "THROUGH PROXY"}")
+            appendLine("${if (r.success) "PASS" else "FAIL"} · ${r.target.name} · ${r.target.host}${r.target.path} · ${if (r.target.direct) "ПРЯМОЙ КОНТРОЛЬ, не прокси" else "ЧЕРЕЗ ПРОКСИ"}")
             r.steps.forEach { appendLine("  ${if (it.ok) "OK" else "FAIL"} ${it.stage.label}: ${it.detail} · ${it.millis} ms") }
             r.code?.let { appendLine("  Code: $it") }
         }
@@ -47,12 +47,16 @@ data class DiagnosticReport(val kind: DiagnosticKind, val endpoint: String, val 
             val dns = proxy.filter { it.target.doh }
             val direct = results.filter { it.target.direct }
             val advice = linkedSetOf<String>()
+            if (results.any { it.code == "CHECK_DEADLINE" }) advice += "Общий лимит времени исчерпан для части целей: это незавершённая проверка, не доказательство мёртвого порта. Повторите на стабильной сети; завершённые цели сохранены."
+            if (proxy.any { it.code == "BAD_INPUT_OR_PROTOCOL" && !it.tcpReached }) advice += "Проверьте заполнение Host, Port 1..65535 и поддерживаемый тип прокси. Некорректные входные данные не являются доказательством отказа источника."
             if (proxy.any { it.code == "DNS_LOOKUP_FAILED" }) advice += "Приставка не разрешила имя HOST прокси: проверьте Host, DNS сети и смену IP/шлюза. До соединения с прокси нельзя оценить DNS удалённого сайта."
-            if (proxy.isNotEmpty() && proxy.none { it.tcpReached }) advice += "TCP-порт прокси недоступен: проверьте Host/Port, Wi-Fi/Ethernet, изоляцию клиентов/firewall роутера или точки доступа; источник прокси должен слушать порт и не спать. Сравните с другим устройством в ТОЙ ЖЕ сети. Очистка кэша здесь не поможет."
+            if (proxy.any { it.code in setOf("DNS_LOOKUP_FAILED", "NO_ROUTE", "CONNECTION_REFUSED_OR_UNREACHABLE", "TIMEOUT", "SOCKET_CLOSED_OR_RESET", "UNEXPECTED_EOF") && it.steps.any { step -> !step.ok && step.stage in setOf(ProbeStage.DNS, ProbeStage.TCP) } } && proxy.none { it.tcpReached }) advice += "TCP-порт прокси недоступен: проверьте Host/Port, Wi-Fi/Ethernet, изоляцию клиентов/firewall роутера или точки доступа; источник прокси должен слушать порт и не спать. Сравните с другим устройством в ТОЙ ЖЕ сети. Очистка кэша здесь не поможет."
             if (proxy.any { it.code?.contains("AUTH") == true || it.code == "CONNECT_HTTP_407" || it.code == "WRONG_PROXY_PROTOCOL" }) advice += "Сначала проверьте тип прокси и авторизацию: SOCKS vs HTTP/HTTPS, Basic vs неподдерживаемый NTLM. Открытый порт может принадлежать другому сервису. Не сбрасывайте данные приложения и сертификаты."
             if (proxy.any { it.code?.startsWith("SOCKS5_REP_") == true || it.code?.startsWith("SOCKS4_REP_") == true || it.code?.startsWith("CONNECT_HTTP_") == true && it.code != "CONNECT_HTTP_407" }) advice += "Источник прокси отказал/не выполнил CONNECT. Смотрите его логи, правила доменов/назначений, DNS и собственный выход в интернет. REP / HTTP-код сужает причину, но не всегда отличает DNS от маршрута. Перезапускайте источник, если другие независимые клиенты тоже не работают либо логи указывают на зависший сервис."
             if (proxy.any { r -> r.steps.any { !it.ok && it.stage in setOf(ProbeStage.PROXY_TLS, ProbeStage.TARGET_TLS) } }) advice += "Сбой TLS: проверьте дату/время/часовой пояс приставки, HTTPS-vs-HTTP тип прокси, доверие/имя сертификата, перехват TLS и сбросы соединения источником. Не отключайте проверку сертификата. Таймаут сам по себе не доказывает ошибку сертификата."
             if (dns.isNotEmpty() && dns.none { it.success } && web.any { it.success }) advice += "HTTPS-сайты отвечают, но оба используемых native DNS адреса DoH не прошли: возможна проблема DNS внутри туннеля. Источник должен разрешать 1.1.1.1:443 / 8.8.8.8:443 и POST DNS-message. После исправления источника/сети переподключите VPN. Кэш браузера/YouTube не исправляет этот DNS-путь."
+            if (dns.any { it.success } && dns.any { !it.success }) advice += "Один DoH сервер ответил, другой нет: native использует fallback между ними. Это не полный отказ DNS; сверяйте native путь, а не только отдельный endpoint."
+            if (kind == DiagnosticKind.INTERNET && web.any { it.httpStatus == 200 || (it.httpStatus ?: 0) in 300..399 }) advice += "Тест /generate_204 ожидал 204, но получил страницу/redirect: проверьте captive portal или ограничения этого test endpoint. Полученный HTTP-ответ сам по себе не означает мёртвый TCP-порт."
             if (web.any { it.success } && web.any { !it.success }) advice += "Недоступна лишь часть целей: это не означает, что весь прокси мёртв. Сравните домены, фильтрацию, перегрузку и ограничения IP источника."
             if (proxy.any { it.httpStatus == 403 || it.httpStatus == 429 }) advice += "Сайт вернул HTTP 403/429 уже после CONNECT/TLS: HTTPS-путь существует, но сайт ограничивает запросы или IP источника. Перезагрузка приставки/очистка кэша обычно не меняет серверное ограничение."
             if (direct.any { it.success } && web.none { it.success }) advice += "Прямой контрольный HTTPS прошёл в выбранной сети приставки, а через прокси — нет: прежде перезагрузки приставки проверьте источник, его правила/выход и путь приставка→прокси. Это всё ещё не независимое доказательство исправности native туннеля."

@@ -1,6 +1,7 @@
 package org.proxydroid.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -14,6 +15,8 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -52,11 +55,13 @@ internal fun ConnectionDiagnostics(state: MainUiState, onInternet: () -> Unit, o
 fun ConnectionDiagnosticDialog(state: MainUiState, onCancel: () -> Unit, onDismiss: () -> Unit) {
     if (!state.diagnosticVisible) return
     val clipboard = LocalClipboardManager.current
+    val scroll = rememberScrollState()
+    val scope = rememberCoroutineScope()
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Подробная диагностика") },
         text = {
-            Column(Modifier.verticalScroll(rememberScrollState()).testTag("diagnostic-report"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.verticalScroll(scroll).testTag("diagnostic-report"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (state.diagnosticRunning) {
                     LinearProgressIndicator(Modifier.fillMaxWidth())
                     Text(state.diagnosticProgress ?: "Проверка…")
@@ -67,12 +72,16 @@ fun ConnectionDiagnosticDialog(state: MainUiState, onCancel: () -> Unit, onDismi
                 if (!state.diagnosticRunning && state.diagnosticReport == null) Text(state.diagnosticProgress ?: "Результата ещё нет.")
             }
         },
-        confirmButton = {
+        confirmButton = { Column {
+            Row {
+                TextButton(onClick = { scope.launch { scroll.animateScrollTo((scroll.value - 400).coerceAtLeast(0)) } }, modifier = Modifier.testTag("scroll-diagnostic-up")) { Text("↑ Вверх") }
+                TextButton(onClick = { scope.launch { scroll.animateScrollTo((scroll.value + 400).coerceAtMost(scroll.maxValue)) } }, modifier = Modifier.testTag("scroll-diagnostic-down")) { Text("↓ Вниз") }
+            }
             if (state.diagnosticRunning) TextButton(onClick = onCancel) { Text("Отменить проверку") }
             else state.diagnosticReport?.let { report ->
                 TextButton(onClick = { clipboard.setText(AnnotatedString(report.text())) }, modifier = Modifier.testTag("copy-diagnostic-report")) { Text("Скопировать отчёт") }
             }
-        },
+        } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Закрыть") } },
     )
 }
