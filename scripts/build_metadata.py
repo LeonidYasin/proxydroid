@@ -47,10 +47,10 @@ def build_metadata(root, variant, env=None, sha=None, abi="universal"):
     application_id = re.search(r'applicationId\s+"([^"]+)"', gradle).group(1)
     min_sdk = int(re.search(r'minSdk\s+(\d+)', gradle).group(1))
     target_sdk = int(re.search(r'targetSdk\s+(\d+)', gradle).group(1))
-    title = f'ProxyDroid v{version} · Android TV/Phone · {abi} · {label} · {channel} · build {run_id} · attempt {attempt} · g{sha[:12]}'
+    title = f'LocProxyTV v{version} · Android TV/Phone · {abi} · {label} · {channel} · build {run_id} · attempt {attempt} · g{sha[:12]}'
     repo = env.get('GITHUB_REPOSITORY', 'LeonidYasin/proxydroid')
     server = env.get('GITHUB_SERVER_URL', 'https://github.com')
-    return dict(schema_version=1, app='ProxyDroid', version=version,
+    return dict(schema_version=1, app='LocProxyTV', version=version,
                 version_code=parts[0] * 10000 + parts[1] * 100 + parts[2],
                 application_id=application_id, platform='Android TV / Phone',
                 abi_variant=abi, supported_abis=supported_abis, variant=variant,

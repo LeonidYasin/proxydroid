@@ -18,6 +18,9 @@ class BrandingContractTest(unittest.TestCase):
         updater = (ROOT / "app/src/main/java/org/proxydroid/update/GitHubUpdater.kt").read_text()
         self.assertIn("/LeonidYasin/proxydroid/releases/download/", catalog)
         self.assertIn("https://api.github.com/repos/LeonidYasin/proxydroid/releases", updater)
+        metadata = (ROOT / "scripts/build_metadata.py").read_text()
+        self.assertIn("LocProxyTV v", metadata)
+        self.assertIn("app='LocProxyTV'", metadata)
         self.assertIn("proxydroid-v", catalog)
         self.assertIn("org.proxydroid", catalog)
 

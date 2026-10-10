@@ -1,6 +1,6 @@
-name: ProxyDroid Android TV/Phone Signed Release
+name: LocProxyTV Android TV/Phone Signed Release
 run-name: >-
-  ProxyDroid · Android TV/Phone · universal + ARM32 (armeabi-v7a) · ${{ inputs.mode == 'backup' && 'encrypted backup' || 'signed release' }} · ${{ inputs.tag || github.ref_name }} · run ${{ github.run_id }} · attempt ${{ github.run_attempt }} · ${{ github.sha }}
+  LocProxyTV · Android TV/Phone · universal + ARM32 (armeabi-v7a) · ${{ inputs.mode == 'backup' && 'encrypted backup' || 'signed release' }} · ${{ inputs.tag || github.ref_name }} · run ${{ github.run_id }} · attempt ${{ github.run_attempt }} · ${{ github.sha }}
 
 # Signed release only. Manual dispatch without a tag builds an artifact, not a release.
 on:
