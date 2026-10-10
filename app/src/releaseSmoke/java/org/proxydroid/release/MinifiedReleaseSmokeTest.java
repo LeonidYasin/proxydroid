@@ -1,6 +1,8 @@
 package org.proxydroid.release;
 
 import android.app.Activity;
+import android.util.Log;
+import androidx.test.core.app.ActivityScenario;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
@@ -16,7 +18,8 @@ import static org.junit.Assert.*;
 /** Runs against the signed, R8/resource-shrunk APK, not the debug variant. */
 @RunWith(AndroidJUnit4.class)
 public class MinifiedReleaseSmokeTest {
-    @Test public void releaseIdentityAndNoLegacyExecutables() throws Exception {
+    @Test(timeout = 60000) public void releaseIdentityAndNoLegacyExecutables() throws Exception {
+        Log.i("ReleaseSmoke", "identity/assets start");
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         assertEquals("org.proxydroid", context.getPackageName());
         assertEquals("LocProxyTV", context.getApplicationInfo().loadLabel(context.getPackageManager()).toString());
@@ -27,17 +30,21 @@ public class MinifiedReleaseSmokeTest {
         }
     }
 
-    @Test public void optimizedLauncherStarts() throws Exception {
+    @Test(timeout = 60000) public void optimizedLauncherStarts() throws Exception {
+        Log.i("ReleaseSmoke", "launcher start");
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         Intent intent = new Intent().setClassName(context, "org.proxydroid.ProxyDroid")
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        Activity activity = InstrumentationRegistry.getInstrumentation().startActivitySync(intent);
-        InstrumentationRegistry.getInstrumentation().waitForIdleSync();
-        assertNotNull(activity.getWindow().getDecorView());
-        InstrumentationRegistry.getInstrumentation().runOnMainSync(activity::finish);
+        // ActivityScenario has a bounded lifecycle transition; never use the
+        // unbounded startActivitySync/waitForIdleSync on a Compose launcher.
+        try (ActivityScenario<Activity> scenario = ActivityScenario.launch(intent)) {
+            scenario.onActivity(activity -> assertNotNull(activity.getWindow().getDecorView()));
+        }
+        Log.i("ReleaseSmoke", "launcher passed");
     }
 
-    @Test public void nativeEntryPointsSurviveR8() throws Exception {
+    @Test(timeout = 60000) public void nativeEntryPointsSurviveR8() throws Exception {
+        Log.i("ReleaseSmoke", "JNI start");
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         Class<?> type = Class.forName("org.proxydroid.utils.Tun2SocksHelper", true, context.getClassLoader());
         Object helper = type.getDeclaredConstructor().newInstance();

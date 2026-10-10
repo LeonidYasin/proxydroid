@@ -178,27 +178,6 @@ jobs:
         ./gradlew testReleaseUnitTest --no-daemon
         ./gradlew assembleRelease --no-daemon --stacktrace
 
-    - name: Enable KVM for optimized release smoke tests
-      run: |
-        echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-        sudo udevadm control --reload-rules
-        sudo udevadm trigger --name-match=kvm
-
-    - name: Test signed minified release on Android 11
-      uses: reactivecircus/android-emulator-runner@v2
-      env:
-        BUILD_SHA: ${{ steps.release.outputs.sha }}
-        KEYSTORE_PATH: ${{ runner.temp }}/proxydroid-release.keystore
-        KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-        KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-        KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-      with:
-        api-level: 30
-        target: google_apis
-        arch: x86_64
-        disable-animations: true
-        script: ./gradlew connectedReleaseAndroidTest -PtestBuildType=release --no-daemon
-
     - name: Verify signature, certificate, non-debuggable flag and alignment
       env:
         EXPECTED_SIGNING_SHA256: ${{ vars.ANDROID_SIGNING_CERT_SHA256 || secrets.ANDROID_SIGNING_CERT_SHA256 }}
@@ -259,6 +238,28 @@ jobs:
         path: dist/${{ steps.release.outputs.arm_name }}.*
         if-no-files-found: error
         retention-days: 30
+
+    - name: Enable KVM for optimized release smoke tests
+      run: |
+        echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+        sudo udevadm control --reload-rules
+        sudo udevadm trigger --name-match=kvm
+
+    - name: Test signed minified release on Android 11
+      uses: reactivecircus/android-emulator-runner@v2
+      env:
+        BUILD_SHA: ${{ steps.release.outputs.sha }}
+        KEYSTORE_PATH: ${{ runner.temp }}/proxydroid-release.keystore
+        KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      with:
+        api-level: 30
+        target: google_apis
+        arch: x86_64
+        disable-animations: true
+        emulator-boot-timeout: 300
+        script: bash scripts/run_release_smoke.sh
 
     - name: Require successful Android and instrumented checks before publishing
       if: steps.release.outputs.tag != ''
@@ -330,6 +331,7 @@ jobs:
           app/build/reports/tests/
           app/build/test-results/
           app/build/reports/androidTests/
+          app/build/reports/release-smoke/
           app/build/outputs/androidTest-results/
           app/build/outputs/mapping/release/
         if-no-files-found: ignore
