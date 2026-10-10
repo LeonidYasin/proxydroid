@@ -70,3 +70,40 @@ maintainer review before running any branch with repository signing secrets.
 This verifies APK signing and packaging, not Google Play eligibility or 16 KB
 native page-size compatibility. Validate native binaries/toolchain and device
 behavior separately if distributing to devices with 16 KB pages.
+
+
+## ProxyDroid signing identity created for this project
+
+A separate RSA-4096 / SHA256withRSA PKCS12 identity was created, not reused from
+TunXBox. The public certificate fingerprint is pinned in `signing-certificate.sha256`:
+`0749fd8dc3df58d0b268d95f7bd43110e8314fd07ad61edb5672ee1406977657`.
+The CI fingerprint must match this reviewed pin before any signing build.
+
+## Encrypted offline backup
+
+Set a strong, unique 20-256 character password without line breaks in repository
+secret `PROXYDROID_BACKUP_PASSWORD`. Save this password separately in a password
+manager; GitHub cannot reveal a saved Actions Secret later.
+
+Run **Release APK** with `mode=backup` on the configured branch. It verifies the
+keystore certificate against the public pin, creates a private tar in memory,
+encrypts it with GPG AES256 and a salted/iterated SHA512 S2K, and verifies a full
+decrypt roundtrip before uploading **only** encrypted output. The artifact
+`ProxyDroid-encrypted-signing-backup` is retained for 7 days: download and store it
+offline in at least two safe places. Its password is not the signing key password.
+
+On your trusted computer with GPG installed:
+
+```bash
+sha256sum -c SHA256SUMS.txt
+gpg --output ProxyDroid-signing-backup.tar --decrypt ProxyDroid-signing-backup.tar.gpg
+mkdir -m 700 restored-proxydroid-signing
+tar -xf ProxyDroid-signing-backup.tar -C restored-proxydroid-signing
+chmod 600 restored-proxydroid-signing/*
+```
+
+GPG prompts for the backup password. The restored `release.keystore` and
+`github-secrets.json` are private signing credentials: never upload them to chat,
+GitHub source, issues or release assets. Verify the restored certificate fingerprint
+before restoring the same signing identity to Actions Secrets. The checksum detects
+accidental file corruption; preserve the authenticated encrypted backup and password.

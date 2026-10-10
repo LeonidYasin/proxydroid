@@ -22,3 +22,7 @@ __pycache__/
 *.keystore
 *.p12
 *.pfx
+
+encrypted-signing-backup/
+.signing/
+github-secrets.json

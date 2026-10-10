@@ -16,6 +16,11 @@ on:
     tags: ['v*']
   workflow_dispatch:
     inputs:
+      mode:
+        description: 'Build signed APK or export an encrypted offline signing backup'
+        type: choice
+        options: [build, backup]
+        default: build
       tag:
         description: 'Existing version tag to publish. Empty = build artifact only.'
         required: false
@@ -31,6 +36,7 @@ concurrency:
 
 jobs:
   build-and-release:
+    if: inputs.mode != 'backup'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -60,6 +66,8 @@ jobs:
         done
         fingerprint=$(printf '%s' "$EXPECTED_SIGNING_SHA256" | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')
         [[ "$fingerprint" =~ ^[0-9a-f]{64}$ ]] || { echo '::error::Invalid signing certificate SHA-256'; exit 1; }
+        pinned=$(tr -d ':[:space:]' < signing-certificate.sha256)
+        [[ "$fingerprint" == "$pinned" ]] || { echo '::error::Signing fingerprint differs from reviewed repository pin'; exit 1; }
         VERSION=$(python3 - <<'PYVERSION'
         from pathlib import Path
         props = dict(line.split('=', 1) for line in Path('version.properties').read_text().splitlines() if line and not line.startswith('#'))
@@ -242,3 +250,34 @@ jobs:
       if: always()
       shell: bash
       run: rm -f "$RUNNER_TEMP/proxydroid-release.keystore"
+
+  encrypted-signing-backup:
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'backup'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+      - name: Encrypt and verify offline signing backup
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          PROXYDROID_BACKUP_PASSWORD: ${{ secrets.PROXYDROID_BACKUP_PASSWORD }}
+        run: python3 scripts/create_signing_backup.py
+      - name: Upload encrypted backup only
+        uses: actions/upload-artifact@v4
+        with:
+          name: ProxyDroid-encrypted-signing-backup
+          path: encrypted-signing-backup/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Remove temporary encrypted output
+        if: always()
+        run: rm -rf encrypted-signing-backup
