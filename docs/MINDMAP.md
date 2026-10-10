@@ -1,10 +1,10 @@
 # Полный mind map проекта ProxyDroid
 
-Source version: **3.8.1** в рабочей ветке. Карта описывает модули/связи/границы реализации, а не подтверждает merge или успешный OEM device QA. [Интерактивная карта](MINDMAP.html) · [Архитектура](ARCHITECTURE.md) · [Roadmap](../ROADMAP.md).
+Source version: **3.8.2** в рабочей ветке. Карта описывает модули/связи/границы реализации, а не подтверждает merge или успешный OEM device QA. [Интерактивная карта](MINDMAP.html) · [Архитектура](ARCHITECTURE.md) · [Roadmap](../ROADMAP.md).
 
 ```mermaid
 mindmap
-  root((ProxyDroid 3.8.1))
+  root((ProxyDroid 3.8.2))
     UX · TV  ·  Phone
       Вход
         ProxyDroid activity · VPN consent/result · foreground start · MainScreen
@@ -100,7 +100,7 @@ mindmap
       Budget
         connect/read timeouts · header/line caps · read deadline · bounded retry
       UI gate
-        checking / failed+Retry / success+Open YouTube · stale/disconnect guard
+        checking / failed+Retry / success+Open YouTube+initial remote focus · stale/disconnect guard
       Открытие
         explicit click · YouTube TV to phone to HTTPS handler · package visibility queries
       Граница доказательства
@@ -117,7 +117,7 @@ mindmap
       Установка
         UpdateFileProvider scoped URI · Android visible Activity + unknown sources resume + installer confirmation · no silent install
       Версия · имя
-        version.properties to 3.8.1 / 30801 · build_metadata.py to platform/ABI/channel/run/attempt/commit
+        version.properties to 3.8.2 / 30802 · build_metadata.py to platform/ABI/channel/run/attempt/commit
       CI
         android-build.yml build/unit/lint/blocking emulator · fixtures · exact-SHA publication gate
       Публикация
@@ -218,7 +218,7 @@ Software tests; real OEM reboot pending
 - **TLS/HTTP:** InternetProbe · trusted TLS + hostname · GET /generate_204 · status 204 only
 - **Endpoints:** www.google.com · connectivitycheck.gstatic.com fallback · no analytics SDK
 - **Budget:** connect/read timeouts · header/line caps · read deadline · bounded retry
-- **UI gate:** checking / failed+Retry / success+Open YouTube · stale/disconnect guard
+- **UI gate:** checking / failed+Retry / success+Open YouTube+initial remote focus · stale/disconnect guard
 - **Открытие:** explicit click · YouTube TV → phone → HTTPS handler · package visibility queries
 - **Граница доказательства:** upstream probe ≠ full TUN path/YouTube playback · Google block false negative · allow-list matters
 
@@ -230,7 +230,7 @@ Signed universal + ARM32
 - **Download:** GitHubUpdater · HTTPS allowlisted redirects · private cache/updates · bounded bytes/checksum
 - **APK trust:** actual package/version/minSDK/native ABI · current installed signer · downgrade refusal
 - **Установка:** UpdateFileProvider scoped URI · Android visible Activity + unknown sources resume + installer confirmation · no silent install
-- **Версия/имя:** version.properties → 3.8.1 / 30801 · build_metadata.py → platform/ABI/channel/run/attempt/commit
+- **Версия/имя:** version.properties → 3.8.2 / 30802 · build_metadata.py → platform/ABI/channel/run/attempt/commit
 - **CI:** android-build.yml build/unit/lint/blocking emulator · fixtures · exact-SHA publication gate
 - **Публикация:** release-apk.yml · pinned keystore · signature/zipalign/nondebug/ABI · draft then publish both APKs
 - **Автоматизация:** auto-tag-release.yml explicit dispatch · prerelease-from-pr label → artifacts, no rolling overwrite

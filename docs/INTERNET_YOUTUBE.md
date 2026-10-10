@@ -12,7 +12,7 @@ Endpoints: `www.google.com`, fallback `connectivitycheck.gstatic.com`. Connect/r
 
 ## UX
 
-После подключении: «Checking internet through proxy…» → при успехе «Internet verified through proxy» и **Open YouTube**; при неуспехе сообщение и Retry. Кнопка не возникает только от зелёной TCP-точки. Нет автоматического Activity launch, autoplay или YouTube account access.
+После подключении: «Checking internet through proxy…» → при успехе «Internet verified through proxy» и **Open YouTube**; при неуспехе сообщение и Retry. При первой успешной проверке после подключения кнопка выводится в видимую область и получает DPAD/keyboard focus. Можно сразу нажать OK. Повторная проверка в той же сессии не перехватывает фокус; после отключения/нового подключения правило сбрасывается. Кнопка не возникает только от зелёной TCP-точки. Нет автоматического Activity launch, autoplay или YouTube account access.
 
 Нажатие: установленный `com.google.android.youtube.tv` → `com.google.android.youtube` → HTTPS YouTube URL через доступный handler. Пакетная visibility объявлена в manifest. Если ничего не открывается, показывается ошибка; приложение не устанавливает YouTube само.
 

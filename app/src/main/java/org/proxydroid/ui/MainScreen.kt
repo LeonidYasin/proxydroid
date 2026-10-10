@@ -2,6 +2,10 @@ package org.proxydroid.ui
 
 import android.content.Intent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -230,7 +234,7 @@ private fun ConnectionCard(
     val inputMode = LocalInputModeManager.current
     var initialFocusSet by remember { mutableStateOf(false) }
     LaunchedEffect(state.isConnecting) {
-        if (!initialFocusSet && !state.isConnecting) {
+        if (!initialFocusSet && !state.isConnecting && !(state.isWorking && state.internetAvailable == true && !state.internetChecking)) {
             // Foundation switches/buttons reject focus in touch mode. Enter
             // DPAD/keyboard mode before assigning the initial remote focus.
             inputMode.requestInputMode(InputMode.Keyboard)
@@ -301,14 +305,35 @@ private fun ConnectionCard(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
 @Composable
 internal fun InternetActions(state: MainUiState, onOpenYouTube: () -> Unit, onRetry: () -> Unit) {
+    val youtubeFocus = remember { FocusRequester() }
+    val youtubeView = remember { BringIntoViewRequester() }
+    val inputMode = LocalInputModeManager.current
+    var focusedThisConnection by remember { mutableStateOf(false) }
+    LaunchedEffect(state.isWorking) {
+        if (!state.isWorking) focusedThisConnection = false
+    }
     if (!state.isWorking) return
     when {
         state.internetChecking -> Text("Checking internet through proxy…", style = MaterialTheme.typography.bodySmall)
         state.internetAvailable == true -> {
             Text("Internet verified through proxy", style = MaterialTheme.typography.bodySmall)
-            TextButton(onClick = onOpenYouTube, modifier = Modifier.testTag("open-youtube")) { Text("Open YouTube") }
+            TextButton(onClick = onOpenYouTube, modifier = Modifier
+                .bringIntoViewRequester(youtubeView)
+                .focusRequester(youtubeFocus).testTag("open-youtube")) { Text("Open YouTube") }
+            // First verified success per connection: show the action and hand off
+            // the remote focus. Retry/poll updates must not repeatedly steal it.
+            LaunchedEffect(Unit) {
+                if (!focusedThisConnection) {
+                    inputMode.requestInputMode(InputMode.Keyboard)
+                    withFrameNanos { } // Wait for the inserted action's layout.
+                    youtubeView.bringIntoView()
+                    youtubeFocus.requestFocus()
+                    focusedThisConnection = true
+                }
+            }
         }
         state.internetAvailable == false -> {
             Text("Internet through proxy could not be verified", color = MaterialTheme.colorScheme.error,
