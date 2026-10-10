@@ -168,3 +168,12 @@ GITHUB_TOKEN tag push does not recursively trigger another workflow.
 
 For build commands and prerequisites see README. For install-time checks and
 unknown-source permission see docs/INTERNET_YOUTUBE.md and README Updates.
+
+
+## Certificate mismatch в updater
+
+3.8.3 показывает реальные SHA-256 установленного и скачанного сертификатов.
+Отсутствующие parser signatures диагностируются отдельно, никогда не принимаются как match.
+При реальном mismatch установка поверх запрещена; не отключайте проверку и не удаляйте приложение до сохранения настроек.
+Переименование app label/repository не должно менять applicationId `org.proxydroid` или persistent signing key.
+Текущий reviewed release certificate: `0749fd8dc3df58d0b268d95f7bd43110e8314fd07ad61edb5672ee1406977657`.

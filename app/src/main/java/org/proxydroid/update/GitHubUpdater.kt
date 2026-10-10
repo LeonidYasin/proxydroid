@@ -15,30 +15,37 @@ import java.net.URL
 import java.security.MessageDigest
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.proxydroid.BuildConfig
+
+data class VerifiedDownload(val file: File, val signatures: SignatureReport)
 
 /** No API token, silent installs, world-readable downloads or signing key in APK. */
 class GitHubUpdater(private val context: Context) {
+    companion object { private val downloadLocks = java.util.concurrent.ConcurrentHashMap<String, Mutex>() }
     private val allowedHosts = setOf("github.com", "api.github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com")
 
-    private fun connect(url: String): HttpURLConnection {
+    private fun connect(url: String, offset: Long = 0, download: Boolean = false): HttpURLConnection {
         var next = URL(url)
         repeat(6) {
             require(next.protocol == "https" && next.host in allowedHosts && next.userInfo == null) { "Untrusted update download URL" }
             val connection = next.openConnection() as HttpURLConnection
             connection.connectTimeout = 15000
-            connection.readTimeout = 30000
+            connection.readTimeout = if (download) 90_000 else 30_000
             connection.instanceFollowRedirects = false
             connection.setRequestProperty("User-Agent", "ProxyDroid/${BuildConfig.VERSION_NAME}")
+            connection.setRequestProperty("Accept-Encoding", "identity")
+            if (download && offset > 0) connection.setRequestProperty("Range", "bytes=$offset-")
             if (next.host == "api.github.com") connection.setRequestProperty("Accept", "application/vnd.github+json")
-            val status = connection.responseCode
+            val status = try { connection.responseCode } catch (failure: Exception) { connection.disconnect(); throw failure }
             if (status in listOf(301, 302, 303, 307, 308)) {
                 val location = connection.getHeaderField("Location")
                 connection.disconnect()
                 require(!location.isNullOrBlank()) { "Invalid GitHub redirect" }
                 next = URL(next, location)
             } else {
-                if (status != 200) {
+                if (status != 200 && !(download && status in listOf(206, 408, 429, 500, 502, 503, 504))) {
                     connection.disconnect()
                     error(if (status == 403 || status == 429) "GitHub rate limit or access restriction. Please try later." else "GitHub returned HTTP $status")
                 }
@@ -75,49 +82,31 @@ class GitHubUpdater(private val context: Context) {
         return ReleaseCatalog.readBuild(offer, metadata, abis, Build.VERSION.SDK_INT, BuildConfig.VERSION_CODE.toLong())
     }
 
-    suspend fun download(build: UpdateBuild, progress: (Float) -> Unit): File {
+    fun partialFile(build: UpdateBuild): File = File(File(context.cacheDir, "update-downloads"), "partial-${build.sha256}.apk")
+
+    suspend fun download(build: UpdateBuild, progress: (DownloadProgress) -> Unit): VerifiedDownload = downloadLocks.getOrPut(build.sha256) { Mutex() }.withLock {
         val dir = File(context.cacheDir, "updates").apply { kotlin.check(mkdirs() || isDirectory) }
-        // Unique temp APK avoids cancellation races and lets PackageManager parse it.
-        val pending = File.createTempFile("pending-", ".apk", dir)
-        val connection = try { connect(build.offer.apk.url) } catch (failure: Exception) {
-            pending.delete(); throw failure
-        }
-        try {
-            val digest = MessageDigest.getInstance("SHA-256")
-            var total = 0L
-            var lastProgress = -1
-            connection.inputStream.use { stream -> pending.outputStream().use { output ->
-                val buffer = ByteArray(32768)
-                while (true) {
-                    currentCoroutineContext().ensureActive()
-                    val n = stream.read(buffer)
-                    if (n < 0) break
-                    total += n
-                    require(total <= build.offer.apk.size && total <= 200L * 1024 * 1024) { "APK is larger than declared" }
-                    digest.update(buffer, 0, n)
-                    output.write(buffer, 0, n)
-                    val percent = (total * 100 / build.offer.apk.size).toInt()
-                    if (percent != lastProgress) {
-                        progress(percent / 100f)
-                        lastProgress = percent
-                    }
-                }
-            } }
-            require(total == build.offer.apk.size && hex(digest.digest()) == build.sha256) { "APK checksum/size verification failed. Nothing will be installed." }
-            validatePackage(pending, build)
-            val ready = File(dir, build.offer.apk.name)
-            kotlin.check(pending.renameTo(ready)) { "Cannot save the verified update APK" }
-            return ready
-        } finally {
-            connection.disconnect()
-            pending.delete()
-        }
+        val partial = partialFile(build) // Outside the provider root; suffix remains .apk for Android parser.
+        val downloaded = ResumableDownload({ url, offset -> connect(url, offset, download = true) })
+            .download(build.offer.apk.url, build.offer.apk.size, build.sha256, partial, progress)
+        currentCoroutineContext().ensureActive()
+        val signatures = validatePackage(downloaded, build)
+        currentCoroutineContext().ensureActive()
+        val ready = File(dir, build.offer.apk.name)
+        kotlin.check(downloaded.renameTo(ready)) { "Cannot move the verified APK into installer cache; saved complete bytes retained" }
+        VerifiedDownload(ready, signatures)
     }
 
     @Suppress("DEPRECATION")
-    private fun validatePackage(file: File, build: UpdateBuild) {
+    fun installedSignatures(): Set<String> {
+        val flags = if (Build.VERSION.SDK_INT >= 28) PackageManager.GET_SIGNING_CERTIFICATES or PackageManager.GET_SIGNATURES else PackageManager.GET_SIGNATURES
+        return signers(context.packageManager.getPackageInfo(context.packageName, flags))
+    }
+
+    @Suppress("DEPRECATION")
+    private fun validatePackage(file: File, build: UpdateBuild): SignatureReport {
         val pm = context.packageManager
-        val flags = if (Build.VERSION.SDK_INT >= 28) PackageManager.GET_SIGNING_CERTIFICATES else PackageManager.GET_SIGNATURES
+        val flags = if (Build.VERSION.SDK_INT >= 28) PackageManager.GET_SIGNING_CERTIFICATES or PackageManager.GET_SIGNATURES else PackageManager.GET_SIGNATURES
         val archive = pm.getPackageArchiveInfo(file.absolutePath, flags) ?: error("Downloaded file is not a valid APK")
         val installed = pm.getPackageInfo(context.packageName, flags)
         val version = if (Build.VERSION.SDK_INT >= 28) archive.longVersionCode else archive.versionCode.toLong()
@@ -130,13 +119,17 @@ class GitHubUpdater(private val context: Context) {
                 .map { it.split('/')[1] }.toSet()
         }
         require(nativeAbis == expectedAbis && nativeAbis.any { it in Build.SUPPORTED_ABIS }) { "Real APK native ABI differs from update metadata" }
-        val actual = signers(archive)
-        require(actual.isNotEmpty() && actual == signers(installed)) { "APK certificate differs from the installed app. Update refused." }
+        val report = SignatureReport(signers(installed), signers(archive))
+        if (report.failure != null) throw SignatureValidationException(report)
+        return report
     }
 
     @Suppress("DEPRECATION")
     private fun signers(info: PackageInfo): Set<String> {
-        val signatures = if (Build.VERSION.SDK_INT >= 28) info.signingInfo?.apkContentsSigners else info.signatures
+        val modern = if (Build.VERSION.SDK_INT >= 28) info.signingInfo?.apkContentsSigners else null
+        // OEM PackageManager may expose legacy signatures but omit signingInfo.
+        // Still compare real certificate bytes; missing both is an explicit error.
+        val signatures = modern?.takeIf { it.isNotEmpty() } ?: info.signatures
         return signatures.orEmpty().map { hex(MessageDigest.getInstance("SHA-256").digest(it.toByteArray())) }.toSet()
     }
 

@@ -38,7 +38,7 @@ fun AppUpdateDialog(
         title = { Text("Update from GitHub") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Installed: v${BuildConfig.VERSION_NAME} · build ${BuildConfig.BUILD_RUN_ID}")
+                Text("Installed: v${BuildConfig.VERSION_NAME} · build ${BuildConfig.BUILD_RUN_ID} · ${if (BuildConfig.DEBUG) "DEBUG" else "RELEASE"}")
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     UpdateChannel.values().forEach { channel ->
                         FilterChip(selected = state.channel == channel,
@@ -54,12 +54,27 @@ fun AppUpdateDialog(
                     Text("Android confirms installation. No silent update or key changes.", style = MaterialTheme.typography.bodySmall)
                 }
                 if (state.downloading) {
-                    Text("Downloading: ${(state.progress * 100).toInt()}%")
+                    Text("${state.downloadStatus ?: "Downloading"}: ${(state.progress * 100).toInt()}% · attempt ${state.downloadAttempt}/5")
+                    Text("${state.downloadBytes / 1024} / ${state.downloadTotal / 1024} KiB · ${state.bytesPerSecond / 1024} KiB/s", style = MaterialTheme.typography.bodySmall)
+                    if (state.bytesPerSecond > 0 && state.downloadBytes < state.downloadTotal) {
+                        Text("Remaining ~${(state.downloadTotal - state.downloadBytes) / state.bytesPerSecond} seconds", style = MaterialTheme.typography.bodySmall)
+                    }
                     LinearProgressIndicator(progress = state.progress, modifier = Modifier.fillMaxWidth())
                 }
                 if (state.installing) { Text("Verifying cached APK / opening installer…"); LinearProgressIndicator(Modifier.fillMaxWidth()) }
                 state.file?.let { file ->
                     DownloadedApkLink(file.absolutePath, enabled = !busy, onInstall = onInstall)
+                }
+                if (!busy && state.file == null && state.downloadBytes > 0) {
+                    Text("Saved ${state.downloadBytes / 1024} / ${state.downloadTotal / 1024} KiB. Resume keeps saved bytes; only a fully verified APK can be installed.", style = MaterialTheme.typography.bodySmall)
+                }
+                state.signatureReport?.let { report ->
+                    Text("Installed signer SHA-256:", style = MaterialTheme.typography.bodySmall)
+                    Text(report.installed.sorted().joinToString("\n").ifEmpty { "Unavailable — not verified" }, style = MaterialTheme.typography.bodySmall)
+                    if (report.downloaded.isNotEmpty()) {
+                        Text("Downloaded APK signer SHA-256:", style = MaterialTheme.typography.bodySmall)
+                        Text(report.downloaded.sorted().joinToString("\n"), style = MaterialTheme.typography.bodySmall)
+                    }
                 }
                 state.message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                 state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -69,12 +84,12 @@ fun AppUpdateDialog(
             if (!busy) {
                 when {
                     state.file != null -> TextButton(onClick = onInstall) { Text("Install") }
-                    state.build != null -> TextButton(onClick = onDownload) { Text("Download APK") }
+                    state.build != null -> TextButton(onClick = onDownload) { Text(if (state.downloadBytes > 0) "Resume download / verify" else "Download APK") }
                     else -> TextButton(onClick = onCheck) { Text("Check latest") }
                 }
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(if (busy) "Cancel" else "Close") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(if (state.downloading) "Pause / close" else if (busy) "Cancel" else "Close") } },
     )
 }
 
