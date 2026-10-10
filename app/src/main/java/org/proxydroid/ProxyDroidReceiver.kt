@@ -26,7 +26,7 @@ class ProxyDroidReceiver : BroadcastReceiver() {
             starter(context, profile)
         } catch (failure: Exception) {
             Log.e("ProxyDroidReceiver", "Boot start failed", failure)
-            BootStatus.record(context, "Android/OEM refused boot start. Open ProxyDroid, grant VPN consent and check background/autostart settings.")
+            BootStatus.record(context, "Android/OEM refused boot start. Open LocProxyTV, grant VPN consent and check background/autostart settings.")
         }
     }
 }

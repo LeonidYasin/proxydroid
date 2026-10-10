@@ -112,7 +112,7 @@ class UpdateViewModel(app: Application) : AndroidViewModel(app) {
                 val opened = updater.install(activity, file)
                 mutable.update { it.copy(installing = false, awaitingPermission = !opened,
                     message = if (opened) "Android installer opened. Confirm installation there; select the APK path to retry if needed."
-                        else "Allow installs from ProxyDroid in Android settings. Installation resumes on return; the APK path also retries without downloading.") }
+                        else "Allow installs from LocProxyTV in Android settings. Installation resumes on return; the APK path also retries without downloading.") }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (failure: Exception) {
                 if (id == request) mutable.update { it.copy(installing = false, signatureReport = (failure as? SignatureValidationException)?.report ?: it.signatureReport, error = failure.message ?: "Android installer is unavailable. The verified APK is retained; select its path to retry.") }

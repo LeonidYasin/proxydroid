@@ -1,10 +1,10 @@
 # Privacy policy / Конфиденциальность
 
-Описание текущего открытого форка ProxyDroid (серия 3.8.x); исходники позволяют проверить перечисленные механизмы. Это не обещание безопасности любых сторонних прокси, прошивок или сайтов.
+Описание текущего открытого форка LocProxyTV (ранее ProxyDroid) (серия 3.8.x); исходники позволяют проверить перечисленные механизмы. Это не обещание безопасности любых сторонних прокси, прошивок или сайтов.
 
 ## Что хранится на устройстве
 
-Профили: host/port/type, app lists, gateway/boot options и введённые credentials находятся в app-private SharedPreferences; пароли пока не дополнительно зашифрованы отдельным Android Keystore key. Boot status хранит результат/время попытки без credentials. APK update download — только в private cache/updates; pending файл удаляется при завершении/ошибке скачивания.
+Профили: host/port/type, app lists, gateway/boot options и введённые credentials находятся в app-private SharedPreferences; пароли пока не дополнительно зашифрованы отдельным Android Keystore key. Boot status хранит результат/время попытки без credentials. APK update download — частичные байты в private cache/update-downloads для докачки; полностью проверенный APK переносится в cache/updates. Пауза/обрыв сохраняет байты; checksum failure удаляет повреждённый partial, Android может очистить кэш.
 
 Manifest запрашивает `allowBackup=false`; перенос/backup производителя может иметь собственную политику. Uninstall удаляет локальные app data по правилам Android. Signing private key не входит в приложение; release certificate — публичный идентификатор, не секрет.
 
@@ -14,7 +14,7 @@ Manifest запрашивает `allowBackup=false`; перенос/backup пр�
 - UDP DNS forwarding использует DoH через proxy к `https://1.1.1.1/dns-query` и `https://8.8.8.8/dns-query`; resolver/proxy получают соответствующие сетевые метаданные и DNS-запросы.
 - После соединения HTTPS internet checks через actual upstream обращаются к `www.google.com` / `connectivitycheck.gstatic.com` `/generate_204`. Endpoint видит сетевые метаданные/proxy exit IP; check не передаёт профильные passwords этим hosts. Auth отправляется только настроенному proxy в его handshake.
 - По действию пользователя GitHub updater обращается к GitHub API и release/CDN endpoints без встроенного GitHub token. Этот UID исключён из VPN, поэтому GitHub обращения могут идти прямо по физической сети. API может видеть device public IP/User-Agent; учитывайте privacy policy GitHub.
-- YouTube открывается только по нажатию после успешного check. Дальнейшие видео/accounts/cookies обрабатывает установленный клиент/браузер по его политике, не ProxyDroid.
+- YouTube открывается только по нажатию после успешного check. Дальнейшие видео/accounts/cookies обрабатывает установленный клиент/браузер по его политике, не LocProxyTV.
 - LAN discovery пока **не реализовано** и не сканирует сеть. Будущий поиск требует explicit user action/разрешённого диапазона и описан в roadmap.
 
 ## Логи и сторонние SDK

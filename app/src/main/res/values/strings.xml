@@ -2,7 +2,7 @@
 <resources>
 
     <!-- app string -->
-    <string name="app_name">ProxyDroid</string>
+    <string name="app_name">LocProxyTV</string>
     <string name="ok_iknow">OK, I know</string>
     <string name="feedback">Feedback @ofmax</string>
 
@@ -23,7 +23,7 @@
     <string name="vpn_running">VPN proxy running</string>
     <string name="forward_success">Connected</string>
     <string name="forward_fail">Fail to connect</string>
-    <string name="service_stopped">ProxyDroid service stopped</string>
+    <string name="service_stopped">LocProxyTV service stopped</string>
     <string name="auto_reconnected">Reconnecting</string>
     <string name="reconnect_success">Reconnected</string>
     <string name="already_stopped">Service has already been stopped</string>
@@ -102,7 +102,7 @@
 		IPTABLES support)</string>
     <string name="bypass_apps">Bypass Mode</string>
     <string name="bypass_apps_summary">Enable this option to bypass selected apps instead of proxying</string>
-    <string name="proxyed_help">Select apps to use with ProxyDroid:</string>
+    <string name="proxyed_help">Select apps to use with LocProxyTV:</string>
 
     <!-- menu bar category -->
     <string name="recovery">Reset</string>
@@ -114,7 +114,7 @@
 		site on
 		google code. \n\n(proxydroid.googlecode.com)</string>
     <string name="about">About</string>
-    <string name="about_title">ProxyDroid %s</string>
+    <string name="about_title">LocProxyTV %s</string>
     <string name="change_name">Rename</string>
     <string name="alert_dialog_ok">OK</string>
     <string name="alert_dialog_cancel">Cancel</string>

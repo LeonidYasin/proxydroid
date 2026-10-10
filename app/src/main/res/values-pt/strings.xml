@@ -2,7 +2,7 @@
 <resources>
 
     <!-- app string -->
-    <string name="app_name">ProxyDroid</string>
+    <string name="app_name">LocProxyTV</string>
     <string name="ok_iknow">OK, eu sei</string>
     <string name="feedback">Feedback @ofmax</string>
 
@@ -22,7 +22,7 @@
     <string name="service_running">A correr em segundo plano</string>
     <string name="forward_success">Conectado</string>
     <string name="forward_fail">Falha ao conectar</string>
-    <string name="service_stopped">Serviço do ProxyDroid parado</string>
+    <string name="service_stopped">Serviço do LocProxyTV parado</string>
     <string name="auto_reconnected">A reconectar</string>
     <string name="reconnect_success">Reconectado</string>
     <string name="already_stopped">O serviço já foi parado</string>
@@ -89,7 +89,7 @@
     <string name="proxyed_apps_summary">Selecione aplicações para intermediar ou ignorar (necessita de acesso ROOT e suporte ao IPTABLES)</string>
     <string name="bypass_apps">Ignorar</string>
     <string name="bypass_apps_summary">Ative esta opção para ignorar as aplicações selecionadas em vez de as intermediar</string>
-    <string name="proxyed_help">Selecione as aplicações que utilizarão o ProxyDroid:</string>
+    <string name="proxyed_help">Selecione as aplicações que utilizarão o LocProxyTV:</string>
 
     <!-- menu bar category -->
     <string name="recovery">Repor</string>
@@ -99,7 +99,7 @@
         GPLv3. \n\nSe tiver alguma questão, por favor visite
         o site do nosso projeto no google code. \n\n(proxydroid.googlecode.com)</string>
     <string name="about">Acerca</string>
-    <string name="about_title">ProxyDroid %s</string>
+    <string name="about_title">LocProxyTV %s</string>
     <string name="change_name">Renomear</string>
     <string name="alert_dialog_ok">OK</string>
     <string name="alert_dialog_cancel">Cancelar</string>

@@ -12,7 +12,7 @@ object ApkInstallIntents {
         require(action == Intent.ACTION_INSTALL_PACKAGE || action == Intent.ACTION_VIEW)
         return Intent(action).apply {
             setDataAndType(uri, "application/vnd.android.package-archive")
-            clipData = ClipData.newRawUri("ProxyDroid verified update", uri)
+            clipData = ClipData.newRawUri("LocProxyTV verified update", uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, false)
         }

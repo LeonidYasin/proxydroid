@@ -37,7 +37,7 @@ object ProxyController {
         try {
             if (VpnService.prepare(context) != null) {
                 if (!allowConsentUi) {
-                    BootStatus.record(context, "VPN consent required. Open ProxyDroid and connect once before enabling Start on boot.")
+                    BootStatus.record(context, "VPN consent required. Open LocProxyTV and connect once before enabling Start on boot.")
                     return false
                 }
                 context.startActivity(Intent(context, ProxyDroid::class.java).apply {

@@ -1,4 +1,4 @@
-# Архитектура ProxyDroid
+# Архитектура LocProxyTV
 
 ## UI/control plane
 

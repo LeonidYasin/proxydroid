@@ -2,7 +2,7 @@
 <resources>
 
     <!-- app string -->
-    <string name="app_name">ProxyDroid</string>
+    <string name="app_name">LocProxyTV</string>
     <string name="ok_iknow">Хорошо</string>
     <string name="feedback">Feedback @ofmax</string>
 
@@ -24,7 +24,7 @@
     <string name="service_running">Запущен в фоновом режиме</string>
     <string name="forward_success">Подключение выполнено</string>
     <string name="forward_fail">Невозможно подключиться</string>
-    <string name="service_stopped">Служба ProxyDroid остановлена</string>
+    <string name="service_stopped">Служба LocProxyTV остановлена</string>
     <string name="auto_reconnected">Переподключение...</string>
     <string name="reconnect_success">Соединение восстановлено</string>
     <string name="already_stopped">Служба уже остановлена</string>

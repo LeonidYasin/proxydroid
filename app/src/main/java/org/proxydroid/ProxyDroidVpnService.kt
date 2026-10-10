@@ -167,10 +167,10 @@ class ProxyDroidVpnService : VpnService() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "ProxyDroid VPN Service",
+                "${getString(R.string.app_name)} VPN Service",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "ProxyDroid VPN service notification"
+                description = "${getString(R.string.app_name)} VPN service notification"
             }
             val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.createNotificationChannel(channel)
