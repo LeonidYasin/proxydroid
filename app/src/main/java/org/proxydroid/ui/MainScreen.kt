@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.text.style.TextOverflow
@@ -91,7 +92,7 @@ import org.proxydroid.R
 
 private val PROXY_TYPES = listOf("socks5", "socks4", "http", "https")
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun MainScreen(
     state: MainUiState,
