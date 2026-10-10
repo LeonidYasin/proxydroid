@@ -148,7 +148,9 @@ cargo {
     prebuiltToolchains = true
 }
 
-tasks.whenTaskAdded { task ->
+// Configure lazily: eager task realization corrupts AGP 8.1 R8 resource wiring
+// (Android issue 277166577). Retain the Rust compile dependencies.
+tasks.configureEach { task ->
     if (task.name == 'mergeDebugJniLibFolders' || task.name == 'mergeReleaseJniLibFolders' ||
         task.name == 'javaPreCompileDebug' || task.name == 'javaPreCompileRelease') {
         task.dependsOn 'cargoBuild'
