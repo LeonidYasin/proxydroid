@@ -19,6 +19,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import org.proxydroid.ui.AppUpdateDialog
+import org.proxydroid.update.UpdateViewModel
 import org.proxydroid.ui.MainScreen
 import org.proxydroid.ui.MainViewModel
 import org.proxydroid.ui.theme.ProxyDroidTheme
@@ -28,6 +30,7 @@ import org.proxydroid.utils.Utils
 class ProxyDroid : ComponentActivity() {
 
     private val viewModel: MainViewModel by viewModels()
+    private val updates: UpdateViewModel by viewModels()
 
     private val vpnConsentLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -47,6 +50,7 @@ class ProxyDroid : ComponentActivity() {
         setContent {
             ProxyDroidTheme {
                 val state by viewModel.state.collectAsState()
+                val updateState by updates.state.collectAsState()
                 MainScreen(
                     state = state,
                     onToggle = { wantOn ->
@@ -59,7 +63,11 @@ class ProxyDroid : ComponentActivity() {
                     onDeleteProfile = viewModel::deleteCurrent,
                     onToggleAdvanced = viewModel::toggleAdvanced,
                     onCheckAlive = viewModel::checkAlive,
+                    onGatewayChange = viewModel::setUseGatewayAsHost,
+                    onOpenUpdates = updates::open,
                 )
+                AppUpdateDialog(updateState, updates::selectChannel, updates::check,
+                    updates::download, updates::install, updates::dismiss)
             }
         }
 

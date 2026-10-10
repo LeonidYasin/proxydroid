@@ -14,7 +14,7 @@ import zipfile
 ABIS = ['arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64']
 
 
-def build_metadata(root, variant, env=None, sha=None):
+def build_metadata(root, variant, env=None, sha=None, abi="universal"):
     env = os.environ if env is None else env
     props = dict(line.strip().split('=', 1) for line in
                  (root / 'version.properties').read_text().splitlines()
@@ -36,21 +36,24 @@ def build_metadata(root, variant, env=None, sha=None):
             raise ValueError('Invalid workflow run identifier')
     if attempt == 'local':
         raise ValueError('Invalid workflow attempt')
+    if abi not in ['universal', 'armeabi-v7a']:
+        raise ValueError('Unsupported exported ABI variant')
+    supported_abis = ABIS if abi == 'universal' else [abi]
     label = 'release-signed' if variant == 'release' else 'debug'
     tag = env.get('INPUT_TAG', '') or (env.get('GITHUB_REF_NAME', '') if env.get('GITHUB_REF', '').startswith('refs/tags/') else '')
     channel = ('prerelease' if '-' in tag else 'stable') if tag and variant == 'release' else 'ci'
-    stem = f'proxydroid-v{version}-android-tv-phone-universal-{label}-{channel}-build-{run_id}-a{attempt}-g{sha[:12]}'
+    stem = f'proxydroid-v{version}-android-tv-phone-{abi}-{label}-{channel}-build-{run_id}-a{attempt}-g{sha[:12]}'
     gradle = (root / 'app/build.gradle').read_text()
     application_id = re.search(r'applicationId\s+"([^"]+)"', gradle).group(1)
     min_sdk = int(re.search(r'minSdk\s+(\d+)', gradle).group(1))
     target_sdk = int(re.search(r'targetSdk\s+(\d+)', gradle).group(1))
-    title = f'ProxyDroid v{version} · Android TV/Phone · universal · {label} · {channel} · build {run_id} · attempt {attempt} · g{sha[:12]}'
+    title = f'ProxyDroid v{version} · Android TV/Phone · {abi} · {label} · {channel} · build {run_id} · attempt {attempt} · g{sha[:12]}'
     repo = env.get('GITHUB_REPOSITORY', 'LeonidYasin/proxydroid')
     server = env.get('GITHUB_SERVER_URL', 'https://github.com')
     return dict(schema_version=1, app='ProxyDroid', version=version,
                 version_code=parts[0] * 10000 + parts[1] * 100 + parts[2],
                 application_id=application_id, platform='Android TV / Phone',
-                abi_variant='universal', supported_abis=ABIS, variant=variant,
+                abi_variant=abi, supported_abis=supported_abis, variant=variant,
                 signing='release' if variant == 'release' else 'debug',
                 release_channel=channel, release_tag=tag or None,
                 min_sdk=min_sdk, target_sdk=target_sdk, commit=sha,
@@ -91,7 +94,7 @@ def package_apk(apk, metadata, dist, badging=None):
     (dist / (metadata['stem'] + '.build-info.txt')).write_text('\n'.join(lines) + '\n')
     notes = [f"## {result['release_title']}", '',
              f"- Platform: {result['platform']}; min SDK {result['min_sdk']}, target SDK {result['target_sdk']}",
-             f"- ABI: universal ({', '.join(result['verified_native_abis'])})",
+             f"- ABI: {result['abi_variant']} ({', '.join(result['verified_native_abis'])})",
              f"- Version: {result['version']} (versionCode {result['version_code']})",
              f"- Variant: {result['variant']}; signing: {result['signing']}; channel: {result['release_channel']}",
              f"- Release tag: {result['release_tag']}",
@@ -108,6 +111,7 @@ def package_apk(apk, metadata, dist, badging=None):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--variant', choices=['debug', 'release'])
+    parser.add_argument('--abi', choices=['universal', 'armeabi-v7a'], default='universal')
     parser.add_argument('--output', type=Path, default=Path('build-info.json'))
     parser.add_argument('--github-output', type=Path)
     parser.add_argument('--apk', type=Path)
@@ -124,7 +128,7 @@ def main():
     else:
         if not args.variant:
             parser.error('--variant is required to generate metadata')
-        result = build_metadata(root, args.variant)
+        result = build_metadata(root, args.variant, abi=args.abi)
         args.output.write_text(json.dumps(result, indent=2, ensure_ascii=False) + '\n')
         if args.github_output:
             with args.github_output.open('a') as output:

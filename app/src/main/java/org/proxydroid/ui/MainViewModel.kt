@@ -56,6 +56,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Job of the periodic liveness probe loop; null when not running. */
     private var pollingJob: Job? = null
+    private var gatewayJob: Job? = null
+    private var gatewayRequest = 0L
 
     init {
         settings.registerOnSharedPreferenceChangeListener(prefListener)
@@ -82,6 +84,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     override fun onCleared() {
         super.onCleared()
         pollingJob?.cancel()
+        gatewayJob?.cancel()
         settings.unregisterOnSharedPreferenceChangeListener(prefListener)
     }
 
@@ -106,18 +109,40 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun updateProfile(transform: Profile.() -> Unit) {
         val next = Profile().also { it.copyFrom(_state.value.profile) }.apply(transform)
         _state.value = _state.value.copy(profile = next)
-        viewModelScope.launch(Dispatchers.IO) {
-            next.setProfile(settings)
-            persistCurrentProfileJson(next)
-        }
+        // apply() changes memory synchronously and writes disk asynchronously.
+        // Serialize UI edits here: an older IO coroutine must not overwrite a
+        // just-refreshed gateway or persist an edit under a different profile ID.
+        val id = _state.value.currentProfileId
+        next.setProfile(settings)
+        settings.edit().putString(id, next.toString()).apply()
     }
 
     fun toggleAdvanced() {
         _state.value = _state.value.copy(advancedExpanded = !_state.value.advancedExpanded)
     }
 
-    fun toggleUseGatewayAsHost() {
-        updateProfile { useGatewayAsHost = !useGatewayAsHost }
+    fun toggleUseGatewayAsHost() = setUseGatewayAsHost(!_state.value.profile.useGatewayAsHost)
+
+    fun setUseGatewayAsHost(enabled: Boolean) {
+        gatewayJob?.cancel()
+        val request = ++gatewayRequest
+        val profileId = _state.value.currentProfileId
+        updateProfile { useGatewayAsHost = enabled }
+        if (!enabled) return // Preserve the resolved host for optional manual editing.
+        gatewayJob = viewModelScope.launch {
+            val gateway = withContext(Dispatchers.IO) {
+                NetworkUtils.getGatewayIp(getApplication())
+            }
+            // Ignore a late answer after another toggle or profile selection.
+            if (request != gatewayRequest || _state.value.currentProfileId != profileId ||
+                !_state.value.profile.useGatewayAsHost) return@launch
+            if (gateway.isNullOrBlank()) {
+                _state.value = _state.value.copy(lastError = "No usable IPv4 default gateway on this network. Host was not changed.")
+            } else {
+                updateProfile { host = gateway }
+                clearError()
+            }
+        }
     }
 
     fun toggleAutoStartOnBoot() {
@@ -214,6 +239,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun selectProfile(id: String) {
         if (id == _state.value.currentProfileId) return
+        gatewayJob?.cancel(); gatewayRequest++
         viewModelScope.launch(Dispatchers.IO) {
             // Save current profile JSON under its ID, then load the new one.
             persistCurrentProfileJson(_state.value.profile)
@@ -238,6 +264,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun newProfile(name: String) {
+        gatewayJob?.cancel(); gatewayRequest++
         viewModelScope.launch(Dispatchers.IO) {
             persistCurrentProfileJson(_state.value.profile)
             val nextId = nextProfileId()
@@ -266,6 +293,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun deleteCurrent() {
+        gatewayJob?.cancel(); gatewayRequest++
         viewModelScope.launch(Dispatchers.IO) {
             val cur = _state.value.currentProfileId
             settings.edit().remove(cur).apply()

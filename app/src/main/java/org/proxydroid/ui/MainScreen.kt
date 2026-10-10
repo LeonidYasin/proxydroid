@@ -58,6 +58,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.testTag
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -91,6 +95,8 @@ fun MainScreen(
     onDeleteProfile: () -> Unit,
     onToggleAdvanced: () -> Unit,
     onCheckAlive: () -> Unit,
+    onGatewayChange: (Boolean) -> Unit,
+    onOpenUpdates: () -> Unit,
 ) {
     val scroll = rememberScrollState()
     val topBarState = rememberTopAppBarState()
@@ -98,6 +104,7 @@ fun MainScreen(
     var menuOpen by remember { mutableStateOf(false) }
     var showRename by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    val connectionFocus = remember { FocusRequester() }
 
     Scaffold(
         modifier = Modifier
@@ -131,6 +138,10 @@ fun MainScreen(
                         )
                         Divider()
                         DropdownMenuItem(
+                            text = { Text("Update app") },
+                            onClick = { menuOpen = false; onOpenUpdates() },
+                        )
+                        DropdownMenuItem(
                             text = {
                                 Column {
                                     Text("About")
@@ -156,11 +167,12 @@ fun MainScreen(
                 .verticalScroll(scroll),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            ConnectionCard(state = state, onToggle = onToggle, onCheckAlive = onCheckAlive)
+            ConnectionCard(state = state, onToggle = onToggle, onCheckAlive = onCheckAlive, focusRequester = connectionFocus)
             AutoGatewayCard(
                 enabled = state.profile.useGatewayAsHost,
-                onChange = { onProfileEdit { useGatewayAsHost = it } },
+                onChange = onGatewayChange,
             )
+            ProxyEndpointCard(profile = state.profile, edit = onProfileEdit)
             ProfileCard(
                 state = state,
                 onSelectProfile = onSelectProfile,
@@ -204,7 +216,16 @@ private fun ConnectionCard(
     state: MainUiState,
     onToggle: (Boolean) -> Unit,
     onCheckAlive: () -> Unit,
+    focusRequester: FocusRequester,
 ) {
+    // Request inside Scaffold's subcomposition, after the target exists.
+    var initialFocusSet by remember { mutableStateOf(false) }
+    LaunchedEffect(state.isConnecting) {
+        if (!initialFocusSet && !state.isConnecting) {
+            focusRequester.requestFocus()
+            initialFocusSet = true
+        }
+    }
     val on = state.isWorking
     val tone = if (on) MaterialTheme.colorScheme.primaryContainer
     else MaterialTheme.colorScheme.surfaceVariant
@@ -251,12 +272,13 @@ private fun ConnectionCard(
                     modifier = Modifier.size(28.dp),
                     strokeWidth = 3.dp,
                 )
-            } else {
-                Switch(
-                    checked = on,
-                    onCheckedChange = onToggle,
-                )
             }
+            Switch(
+                checked = on,
+                onCheckedChange = onToggle,
+                enabled = !state.isConnecting,
+                modifier = Modifier.focusRequester(focusRequester).testTag("connection-toggle"),
+            )
         }
     }
 }
@@ -379,7 +401,7 @@ private fun AutoGatewayCard(enabled: Boolean, onChange: (Boolean) -> Unit) {
             Text("Auto gateway", style = MaterialTheme.typography.labelLarge)
             Spacer(Modifier.height(8.dp))
             ToggleRow(
-                title = "Use Wi-Fi gateway as proxy host",
+                title = "Use default gateway as proxy host",
                 subtitle = "Automatically use the current network's default gateway " +
                     "(e.g. the phone's hotspot address 192.168.43.1) as the upstream " +
                     "proxy host, instead of the manually configured Host.",
@@ -408,29 +430,10 @@ private fun AutoStartOnBootCard(enabled: Boolean, onChange: (Boolean) -> Unit) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ProxyForm(profile: Profile, edit: (Profile.() -> Unit) -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+private fun ProxyEndpointCard(profile: Profile, edit: (Profile.() -> Unit) -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth().testTag("proxy-endpoint")) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text("Proxy", style = MaterialTheme.typography.labelLarge)
-            Spacer(Modifier.height(12.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                PROXY_TYPES.forEach { t ->
-                    FilterChip(
-                        selected = profile.proxyType == t,
-                        onClick = { edit { proxyType = t } },
-                        label = { Text(t.uppercase()) },
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            }
-            Spacer(Modifier.height(12.dp))
-
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -455,6 +458,34 @@ private fun ProxyForm(profile: Profile, edit: (Profile.() -> Unit) -> Unit) {
                     modifier = Modifier.weight(1f),
                 )
             }
+
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ProxyForm(profile: Profile, edit: (Profile.() -> Unit) -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Proxy", style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                PROXY_TYPES.forEach { t ->
+                    FilterChip(
+                        selected = profile.proxyType == t,
+                        onClick = { edit { proxyType = t } },
+                        label = { Text(t.uppercase()) },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+
 
             Spacer(Modifier.height(8.dp))
             ToggleRow(

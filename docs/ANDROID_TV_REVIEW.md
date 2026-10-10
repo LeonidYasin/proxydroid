@@ -100,3 +100,30 @@ filtering may also differ from standard Android TV behavior.
    rapid connect/stop, reboot, and each supported Android version/ABI.
 7. Run `./gradlew testDebugUnitTest assembleDebug assembleDebugAndroidTest`, then
    device tests using `./gradlew connectedDebugAndroidTest` on a suitable device.
+
+## v3.7.3: TV controls and in-app updates
+
+- Initial DPAD focus is the connection switch. Main screen order: connection,
+  auto gateway, Host/Port, profile, other settings. Editor dialogs still open
+  only on click/DPAD OK, never on focus.
+- Enabling auto gateway performs a fresh lookup of the physical network's
+  IPv4 default gateway and stores it in the selected profile's Host. Stale
+  lookups are ignored after changing profile or disabling the option. No
+  gateway produces a visible error rather than overwriting Host with blank.
+- Menu → Update app offers separate Stable and Test / pre-release channels.
+  It selects only published signed ProxyDroid releases with build metadata.
+  ARM32-capable devices prefer armeabi-v7a; other devices use universal.
+- Downloads stay in private cache. Before allowing installation, the updater
+  verifies declared byte count, SHA-256, actual package/version/minSDK/native
+  ABIs and the certificate against the currently installed app. Downgrades
+  and foreign signing certificates are refused. No signing secrets are in APKs.
+- Android asks the user to allow installs from this app, where required, and
+  confirms installation. After granting permission, return and choose Install
+  again. No silent installation. Cancellation stops downloads and cleans the
+  pending file. GitHub/network restrictions are shown as an error.
+- Release workflow publishes universal and compact armeabi-v7a APKs, each
+  with its own checksum, signing report and build metadata. Both use the same
+  versionCode and permanent signing certificate. Obsolete `armeabi` is not
+  produced: ARM32 target is `armeabi-v7a`.
+- Stable shows no candidate until a compatible signed non-prerelease release
+  is published. Existing unsigned/debug releases are deliberately ignored.

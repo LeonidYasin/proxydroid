@@ -112,7 +112,7 @@ jobs:
       run: ./gradlew assembleDebug assembleDebugAndroidTest --stacktrace
 
     - name: Package consistently named Debug APK
-      run: python3 scripts/build_metadata.py --apk app/build/outputs/apk/debug/app-debug.apk --metadata build-info.json --dist dist
+      run: python3 scripts/build_metadata.py --apk app/build/outputs/apk/debug/app-universal-debug.apk --metadata build-info.json --dist dist
 
     - name: Upload Debug APK
       uses: actions/upload-artifact@v4

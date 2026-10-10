@@ -18,8 +18,8 @@ assert 'android.intent.category.LEANBACK_LAUNCHER' in categories
 ET.parse(ROOT / 'app/src/main/res/drawable/tv_banner.xml')
 screen = (ROOT / 'app/src/main/java/org/proxydroid/ui/MainScreen.kt').read_text()
 body = screen[screen.index('            ConnectionCard(state'):screen.index('            AutoStartOnBootCard(')]
-assert body.index('ConnectionCard(') < body.index('AutoGatewayCard(') < body.index('ProfileCard(') < body.index('ProxyForm(')
-form = screen[screen.index('private fun ProxyForm('):screen.index('private fun ToggleRow(')]
+assert body.index('ConnectionCard(') < body.index('AutoGatewayCard(') < body.index('ProxyEndpointCard(') < body.index('ProfileCard(') < body.index('ProxyForm(')
+form = screen[screen.index('private fun ProxyEndpointCard('):screen.index('private fun ToggleRow(')]
 assert 'OutlinedTextField(' not in form
 assert form.count('EditableSettingField(') == 7
 profile = (ROOT / 'app/src/main/java/org/proxydroid/Profile.kt').read_text()
@@ -30,3 +30,13 @@ editor = (ROOT / 'app/src/main/java/org/proxydroid/ui/EditableSettingField.kt').
 assert 'OutlinedButton(' in editor and 'onFocusChanged' not in editor
 assert editor.index('if (editing)') < editor.index('OutlinedTextField(')
 print('PASS: TV launch/manifest, banner XML, settings order, click-to-edit structure and default port')
+
+assert 'onChange = onGatewayChange' in screen
+assert 'testTag("connection-toggle")' in screen
+assert 'focusRequester.requestFocus()' in screen
+vm = (ROOT / 'app/src/main/java/org/proxydroid/ui/MainViewModel.kt').read_text()
+assert 'fun setUseGatewayAsHost(enabled: Boolean)' in vm and 'updateProfile { host = gateway }' in vm
+assert 'android.permission.REQUEST_INSTALL_PACKAGES' in (ROOT / 'app/src/main/AndroidManifest.xml').read_text()
+paths = ET.parse(ROOT / 'app/src/main/res/xml/update_file_paths.xml').getroot()
+assert paths.find('cache-path').get('path') == 'updates/'
+print('PASS: endpoint order, initial connection focus, fresh gateway callback and scoped update provider')

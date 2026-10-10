@@ -71,7 +71,8 @@ jobs:
         pinned=$(tr -d ':[:space:]' < signing-certificate.sha256)
         [[ "$fingerprint" == "$pinned" ]] || { echo '::error::Signing fingerprint differs from reviewed repository pin'; exit 1; }
         python3 -m unittest discover -s scripts -p test_build_metadata.py
-        python3 scripts/build_metadata.py --variant release --output build-info.json --github-output "$GITHUB_OUTPUT"
+        python3 scripts/build_metadata.py --variant release --abi universal --output build-info.json --github-output "$GITHUB_OUTPUT"
+        python3 scripts/build_metadata.py --variant release --abi armeabi-v7a --output build-info-armv7.json
         VERSION=$(python3 -c 'import json; print(json.load(open("build-info.json"))["version"])')
         BUILD_SHA=$(git rev-parse HEAD)
         TAG="$INPUT_TAG"
@@ -183,23 +184,38 @@ jobs:
       shell: bash
       run: |
         set -euo pipefail
-        APK=app/build/outputs/apk/release/app-release.apk
         TOOLS="$ANDROID_HOME/build-tools/34.0.0"
         mkdir -p dist
-        "$TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee "dist/$APK_NAME.signing.txt"
-        actual=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "dist/$APK_NAME.signing.txt" | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')
         expected=$(printf '%s' "$EXPECTED_SIGNING_SHA256" | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')
-        [[ "$actual" == "$expected" ]] || { echo '::error::Wrong signing certificate'; exit 1; }
-        if grep -Eq 'Signer #1 certificate DN:.*CN=Android Debug' "dist/$APK_NAME.signing.txt"; then
-          echo '::error::Android debug certificate is not a release identity'; exit 1
-        fi
-        "$TOOLS/zipalign" -c -v 4 "$APK"
-        "$TOOLS/aapt" dump badging "$APK" > "dist/$APK_NAME.manifest.txt"
-        if grep -q '^application-debuggable' "dist/$APK_NAME.manifest.txt"; then
-          echo '::error::Release APK is debuggable'; exit 1
-        fi
-        python3 scripts/build_metadata.py --apk "$APK" --metadata build-info.json --dist dist --badging "dist/$APK_NAME.manifest.txt"
-        (cd dist && sha256sum -c "$APK_NAME.apk.sha256")
+        for abi in universal armeabi-v7a; do
+          APK="app/build/outputs/apk/release/app-$abi-release.apk"
+          METADATA=build-info.json
+          if [[ "$abi" == armeabi-v7a ]]; then METADATA=build-info-armv7.json; fi
+          NAME=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["stem"])' "$METADATA")
+          "$TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee "dist/$NAME.signing.txt"
+          actual=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "dist/$NAME.signing.txt" | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')
+          [[ "$actual" == "$expected" ]] || { echo '::error::Wrong signing certificate'; exit 1; }
+          if grep -Eq 'Signer #1 certificate DN:.*CN=Android Debug' "dist/$NAME.signing.txt"; then
+            echo '::error::Android debug certificate is not a release identity'; exit 1
+          fi
+          "$TOOLS/zipalign" -c -v 4 "$APK"
+          "$TOOLS/aapt" dump badging "$APK" > "dist/$NAME.manifest.txt"
+          if grep -q '^application-debuggable' "dist/$NAME.manifest.txt"; then
+            echo '::error::Release APK is debuggable'; exit 1
+          fi
+          python3 scripts/build_metadata.py --apk "$APK" --metadata "$METADATA" --dist dist --badging "dist/$NAME.manifest.txt"
+          (cd dist && sha256sum -c "$NAME.apk.sha256")
+        done
+        python3 - <<'PYSIZE'
+        import json
+        from pathlib import Path
+        builds = [json.loads(p.read_text()) for p in Path('dist').glob('*.build-info.json')]
+        uni = next(x for x in builds if x['abi_variant'] == 'universal')
+        arm = next(x for x in builds if x['abi_variant'] == 'armeabi-v7a')
+        assert arm['apk_bytes'] < uni['apk_bytes'], 'ARM32 package must be smaller than universal'
+        assert arm['commit'] == uni['commit'] and arm['version_code'] == uni['version_code']
+        print('Verified separate compact ARM32 and universal packages with identical source/version identity.')
+        PYSIZE
 
     - name: Upload verified signed Release APK
       uses: actions/upload-artifact@v4
@@ -226,10 +242,21 @@ jobs:
         fi
         flags=()
         if [[ "$TAG" == *-* ]]; then flags+=(--prerelease); fi
-        gh release create "$TAG" --verify-tag --draft --title "$RELEASE_TITLE" \
-          --notes-file "dist/$APK_NAME.release-notes.md" "${flags[@]}" \
-          "dist/$APK_NAME.apk" "dist/$APK_NAME.apk.sha256" \
-          "dist/$APK_NAME.signing.txt" "dist/$APK_NAME.build-info.json" "dist/$APK_NAME.build-info.txt"
+        python3 - <<'PYNOTES'
+        import json
+        from pathlib import Path
+        records = sorted((json.loads(p.read_text()) for p in Path('dist').glob('*.build-info.json')), key=lambda x: x['abi_variant'])
+        notes = ['## Signed Android TV / Phone APKs', '']
+        for record in records:
+            notes += [f"### {record['abi_variant']}", f"- File: `{record['apk_filename']}`", f"- Bytes: {record['apk_bytes']}", f"- SHA-256: `{record['apk_sha256']}`", '']
+        uni = next(x for x in records if x['abi_variant'] == 'universal')
+        notes += [(Path('dist') / (uni['stem'] + '.release-notes.md')).read_text()]
+        Path('dist/release-notes.md').write_text('\n'.join(notes))
+        PYNOTES
+        RELEASE_TITLE="${RELEASE_TITLE/· universal ·/· universal + ARM32 (armeabi-v7a) ·}"
+        gh release create "$TAG" --verify-tag --target "$BUILD_SHA" --draft --title "$RELEASE_TITLE" \
+          --notes-file dist/release-notes.md "${flags[@]}" \
+          dist/*.apk dist/*.apk.sha256 dist/*.signing.txt dist/*.build-info.json dist/*.build-info.txt
         # Publish only after all correctly named assets have uploaded.
         gh release edit "$TAG" --draft=false
 

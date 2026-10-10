@@ -63,6 +63,12 @@ class NamingContractTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 package_apk(apk, metadata, root / 'wrong-dist', badging)
 
+    def test_arm32_has_distinct_name_and_exactly_one_abi(self):
+        value = build_metadata(ROOT, 'release', ENV, SHA, abi='armeabi-v7a')
+        self.assertEqual(['armeabi-v7a'], value['supported_abis'])
+        self.assertIn('-armeabi-v7a-', value['apk_filename'])
+        self.assertNotEqual(value['apk_filename'], build_metadata(ROOT, 'release', ENV, SHA)['apk_filename'])
+
     def test_rejects_missing_native_abi(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
