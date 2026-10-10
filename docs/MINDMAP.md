@@ -117,7 +117,7 @@ mindmap
       Установка
         UpdateFileProvider scoped URI · Android visible Activity + unknown sources resume + installer confirmation · no silent install
       Версия · имя
-        version.properties to 3.8.1 / 30800 · build_metadata.py to platform/ABI/channel/run/attempt/commit
+        version.properties to 3.8.1 / 30801 · build_metadata.py to platform/ABI/channel/run/attempt/commit
       CI
         android-build.yml build/unit/lint/blocking emulator · fixtures · exact-SHA publication gate
       Публикация
@@ -211,7 +211,7 @@ Software tests; real OEM reboot pending
 - **Риски:** Force stop · first open · revoked consent · another VPN · OEM power/autostart restrictions
 
 ### Интернет → YouTube
-Новая функция 3.8.1
+Реализовано с 3.8.0
 
 - **Условие:** VPN working → actual activeUpstream snapshot → distinct internet check
 - **Транспорт:** ProxyTransport handshake · remote DNS · credentials only to configured proxy
@@ -230,7 +230,7 @@ Signed universal + ARM32
 - **Download:** GitHubUpdater · HTTPS allowlisted redirects · private cache/updates · bounded bytes/checksum
 - **APK trust:** actual package/version/minSDK/native ABI · current installed signer · downgrade refusal
 - **Установка:** UpdateFileProvider scoped URI · Android visible Activity + unknown sources resume + installer confirmation · no silent install
-- **Версия/имя:** version.properties → 3.8.1 / 30800 · build_metadata.py → platform/ABI/channel/run/attempt/commit
+- **Версия/имя:** version.properties → 3.8.1 / 30801 · build_metadata.py → platform/ABI/channel/run/attempt/commit
 - **CI:** android-build.yml build/unit/lint/blocking emulator · fixtures · exact-SHA publication gate
 - **Публикация:** release-apk.yml · pinned keystore · signature/zipalign/nondebug/ABI · draft then publish both APKs
 - **Автоматизация:** auto-tag-release.yml explicit dispatch · prerelease-from-pr label → artifacts, no rolling overwrite
