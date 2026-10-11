@@ -34,6 +34,16 @@ class ConnectionDiagnosticsTest {
         compose.onNodeWithTag("copy-diagnostic-report").assertIsDisplayed()
         compose.onNodeWithTag("share-diagnostic-qr").assertIsDisplayed()
     }
+    @Test fun localQrCanBeOpenedAndClosedFromTheReport() {
+        val report = org.proxydroid.utils.DiagnosticReport(org.proxydroid.utils.DiagnosticKind.INTERNET, "test", emptyList(), emptyList())
+        compose.setContent { MaterialTheme { ConnectionDiagnosticDialog(MainUiState(diagnosticVisible = true, diagnosticReport = report), {}, {}) } }
+        compose.onNodeWithTag("share-diagnostic-qr").performClick()
+        compose.waitUntil(10000) { compose.onAllNodesWithTag("diagnostic-share-qr").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("diagnostic-share-qr").assertIsDisplayed()
+        compose.onNodeWithText("Закрыть передачу").performClick()
+        compose.onNodeWithTag("diagnostic-share-qr").assertDoesNotExist()
+        compose.onNodeWithTag("copy-diagnostic-report").assertIsDisplayed()
+    }
     @Test fun busyButtonsDoNotLaunchDuplicateChecks() {
         compose.setContent { MaterialTheme { ConnectionDiagnostics(MainUiState(diagnosticRunning = true), {}, {}, {}) } }
         compose.onNodeWithTag("check-proxy-internet").assertIsNotEnabled()

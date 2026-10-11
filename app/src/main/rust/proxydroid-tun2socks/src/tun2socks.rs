@@ -115,11 +115,12 @@ pub fn start(fd: i32, cfg: UpstreamConfig) -> Result<(), Tun2SocksError> {
         if let Err(e) = run_tun2socks(fd, cfg, shutdown_rx).await {
             logging::bridge_log(&format!("tun2socks error: {}", e));
         }
-        TUN2SOCKS_RUNNING.store(false, Ordering::SeqCst);
         // Drop any leftover sender so a late stop() doesn't think the loop is
         // alive.
         *SHUTDOWN_TX.lock() = None;
         dns_table::clear();
+        doh_client::clear();
+        TUN2SOCKS_RUNNING.store(false, Ordering::SeqCst);
         info!("tun2socks exited");
     }));
 
@@ -300,8 +301,8 @@ async fn run_tun2socks(
             true
         }
         _ = shutdown_rx => {
-            // Flip the flag so the reader's inner loop will also notice.
-            TUN2SOCKS_RUNNING.store(false, Ordering::SeqCst);
+            // RUNNING stays true until teardown completes: a new session
+            // must not race old DNS/client cleanup. Reader is aborted below.
             logging::bridge_log("tun2socks: shutdown requested");
             false
         }

@@ -16,6 +16,9 @@ class RestartActivity : Activity() {
         }
         if (ownMain == null || oldPid == Process.myPid()) { finish(); return }
         Process.killProcess(oldPid)
+        val deadline = android.os.SystemClock.elapsedRealtime() + 1500
+        while (manager.runningAppProcesses?.any { it.pid == oldPid } == true && android.os.SystemClock.elapsedRealtime() < deadline)
+            android.os.SystemClock.sleep(25)
         startActivity(Intent(this, ProxyDroid::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
         finish()

@@ -47,7 +47,7 @@ class DiagnosticShareServer(address: Inet4Address, report: String, private val l
             if (header.endsWith("\r\n\r\n")) break
         }
         if (!isOpen || !header.endsWith("\r\n\r\n")) return
-        val request = header.substringBefore("\r\n").split(' ')
+        val request = header.toString().substringBefore("\r\n").split(' ')
         val authorized = request.size == 3 && request[0] == "GET" && request[2] in listOf("HTTP/1.0", "HTTP/1.1") &&
             MessageDigest.isEqual(request[1].toByteArray(Charsets.US_ASCII), path.toByteArray(Charsets.US_ASCII))
         val body = if (authorized) content else "Not found\n".toByteArray(Charsets.UTF_8)

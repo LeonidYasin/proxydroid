@@ -21,6 +21,8 @@ struct DohClient {
 
 static DOH_CLIENT: LazyLock<RwLock<Option<Arc<DohClient>>>> = LazyLock::new(|| RwLock::new(None));
 
+pub fn clear() { *DOH_CLIENT.write() = None; }
+
 /// Replace the active DoH client on EVERY VPN session/profile change.
 /// In-flight requests hold an Arc snapshot; no lock is held across await.
 pub fn init_doh_client(cfg: &UpstreamConfig) -> Result<(), Tun2SocksError> {

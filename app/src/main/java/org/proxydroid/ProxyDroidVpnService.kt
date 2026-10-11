@@ -51,6 +51,7 @@ class ProxyDroidVpnService : VpnService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var vpnJob: Job? = null
     private val lifecycleLock = Any()
+    private val stopping = java.util.concurrent.atomic.AtomicBoolean(false)
     private val generation = java.util.concurrent.atomic.AtomicLong(0)
 
 
@@ -84,6 +85,7 @@ class ProxyDroidVpnService : VpnService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
+            stopping.set(true)
             Utils.recordVpnEvent("Stop requested")
             generation.incrementAndGet()
             val old = vpnJob
@@ -101,8 +103,13 @@ class ProxyDroidVpnService : VpnService() {
                     // A late onDestroy from stopSelf must not tear down the new session.
                     if (acknowledgement == null) stopSelf(startId)
                 }
+                stopping.set(false)
                 acknowledgement?.send(if (stopped) 0 else 1, null)
             }
+            return START_NOT_STICKY
+        }
+        if (stopping.get()) {
+            Utils.setLastError("VPN is still stopping; wait for completion before connecting.")
             return START_NOT_STICKY
         }
         // Duplicate boot/update events must not restart a live or waiting VPN.
@@ -152,6 +159,7 @@ class ProxyDroidVpnService : VpnService() {
                     true
                 } == true
                 check(ready) { "Boot start timed out waiting for network/proxy. Open the app and reconnect." }
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
                 if (autoGateway && settings.getString("profile", "1") == profileId && settings.getBoolean("useGatewayAsHost", false)) {
                     val current = Profile().apply { getProfile(settings); this.host = this@ProxyDroidVpnService.host }
                     current.setProfile(settings); settings.edit().putString(profileId, current.toString()).apply()
@@ -182,6 +190,7 @@ class ProxyDroidVpnService : VpnService() {
     }
 
     override fun onRevoke() {
+        stopping.set(true)
         Utils.recordVpnEvent("Android revoked VPN ownership")
         generation.incrementAndGet(); vpnJob?.cancel()
         stopVpn()

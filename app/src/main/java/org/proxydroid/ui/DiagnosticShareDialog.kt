@@ -4,6 +4,9 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.net.ConnectivityManager
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -61,9 +64,9 @@ fun DiagnosticShareDialog(report: String, onDismiss: () -> Unit) {
         finally { local?.close() }
     }
     AlertDialog(onDismissRequest = onDismiss, title = { Text("Отчёт на смартфон") }, text = {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Телефон и приставка должны быть в одной Wi-Fi/локальной сети. Отсканируйте QR камерой: браузер скачает TXT.", style = MaterialTheme.typography.bodySmall)
-            if (error == null) image?.let { Image(it.asImageBitmap(), "QR для скачивания отчёта", Modifier.size(240.dp)) }
+            if (error == null) image?.let { Image(it.asImageBitmap(), "QR для скачивания отчёта", Modifier.size(200.dp).testTag("diagnostic-share-qr")) }
             if (error == null) server?.let { Text(it.url, style = MaterialTheme.typography.bodySmall) }
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             Text("Ссылка действует до 5 минут и закрывается вместе с этим окном. Это локальный HTTP, не шифрованная передача: используйте доверенную сеть. Отчёт содержит адреса сети/модель, но не пароль прокси. QR даёт доступ любому, кто его видит. Если не открывается — проверьте VPN телефона и изоляцию клиентов Wi-Fi.", style = MaterialTheme.typography.bodySmall)

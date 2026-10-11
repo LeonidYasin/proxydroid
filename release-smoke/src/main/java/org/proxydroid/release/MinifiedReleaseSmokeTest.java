@@ -80,8 +80,8 @@ public class MinifiedReleaseSmokeTest {
         assertTrue(image.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, bytes));
         String encoded = android.util.Base64.encodeToString(bytes.toByteArray(), android.util.Base64.NO_WRAP);
         android.os.ParcelFileDescriptor output = InstrumentationRegistry.getInstrumentation()
-                .getUiAutomation().executeShellCommand("sh -c \"echo '" + encoded +
-                        "' | base64 -d > /data/local/tmp/" + name + "\"");
+                .getUiAutomation().executeShellCommand("sh -c echo${IFS}'" + encoded +
+                        "'|base64${IFS}-d>/data/local/tmp/" + name);
         try (java.io.InputStream stream = new android.os.ParcelFileDescriptor.AutoCloseInputStream(output)) {
             byte[] buffer = new byte[1024];
             while (stream.read(buffer) != -1) { }
