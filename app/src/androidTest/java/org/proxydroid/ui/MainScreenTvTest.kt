@@ -76,7 +76,7 @@ class MainScreenTvTest {
         val viewport = compose.onNodeWithTag("main-scroll").getUnclippedBoundsInRoot()
         assertTrue("Full title/row below pinned header", row.top >= header.bottom)
         assertTrue("Row bottom within scroll viewport", row.bottom <= viewport.bottom)
-        assertEquals("Full row height retained", initial.height.value, row.height.value, 1f)
+        assertEquals("Full row height retained", (initial.bottom-initial.top).value, (row.bottom-row.top).value, 1f)
     }
     @Test fun dpadOkOnConnectionRowTogglesExactlyOnce() {
         var calls = 0

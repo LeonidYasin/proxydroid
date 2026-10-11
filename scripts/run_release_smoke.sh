@@ -26,7 +26,9 @@ grep -Eq '^OK \(3 tests\)' app/build/reports/release-smoke/instrumentation.txt
 adb pull /sdcard/Android/data/org.proxydroid/files/launcher-banner.png app/build/reports/release-smoke/launcher-banner.png
 adb pull /sdcard/Android/data/org.proxydroid/files/launcher-icon.png app/build/reports/release-smoke/launcher-icon.png
 # Visual QA captures from the actual signed minified target, not a mockup.
-adb shell wm size 1280x720
+adb shell settings put system accelerometer_rotation 0
+adb shell wm size 720x1280
+adb shell settings put system user_rotation 1
 adb shell wm density 160
 adb shell cmd uimode night yes
 adb shell am force-stop org.proxydroid
@@ -37,6 +39,7 @@ for i in $(seq 1 14); do adb shell input keyevent 20; done
 for i in $(seq 1 14); do adb shell input keyevent 19; done
 sleep 2
 adb exec-out screencap -p > app/build/reports/release-smoke/tv-dpad-return.png
+adb shell settings put system user_rotation 0
 adb shell wm size 720x1280
 adb shell wm density 320
 adb shell cmd uimode night no
