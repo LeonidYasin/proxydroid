@@ -114,6 +114,10 @@ fun MainScreen(
     onCheckYouTube: () -> Unit = {},
     onShowDiagnostics: () -> Unit = {},
     onRecovery: () -> Unit = {},
+    onLanAutoScan: (Boolean) -> Unit = {},
+    onLanScan: () -> Unit = {},
+    onLanCancel: () -> Unit = {},
+    onLanSelect: (org.proxydroid.utils.LanProxy) -> Unit = {},
 ) {
     val scroll = rememberScrollState()
     var menuOpen by remember { mutableStateOf(false) }
@@ -207,6 +211,7 @@ fun MainScreen(
                 status = state.bootStatus,
                 onChange = { onProfileEdit { autoStartOnBoot = it } },
             )
+            LanProxyCard(state, onLanAutoScan, onLanScan, onLanCancel, onLanSelect)
             AdvancedSection(
                 profile = state.profile,
                 expanded = state.advancedExpanded,
@@ -748,7 +753,7 @@ private fun TextEditDialog(
 }
 
 @Composable
-private fun ConfirmDialog(
+internal fun ConfirmDialog(
     title: String,
     confirmText: String,
     onDismiss: () -> Unit,
@@ -757,7 +762,7 @@ private fun ConfirmDialog(
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
-        confirmButton = { TextButton(onClick = onConfirm) { Text(confirmText) } },
+        confirmButton = { TextButton(onClick = onConfirm, modifier = Modifier.tvRemoteFocus()) { Text(confirmText) } },
         dismissButton = { TextButton(onClick = onDismiss, modifier = Modifier.tvRemoteFocus()) { Text("Cancel") } },
     )
 }

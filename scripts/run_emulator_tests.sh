@@ -94,4 +94,6 @@ cd "$PROJECT_DIR"
 mkdir -p app/build/reports/androidTests/dpad-visual
 adb pull /data/local/tmp/diagnostic-dpad-report.png app/build/reports/androidTests/dpad-visual/diagnostic-dpad-report.png
 adb pull /data/local/tmp/diagnostic-dpad-qr.png app/build/reports/androidTests/dpad-visual/diagnostic-dpad-qr.png
+adb pull /data/local/tmp/lan-proxy-results.png app/build/reports/androidTests/dpad-visual/lan-proxy-results.png
+adb pull /data/local/tmp/lan-proxy-confirm.png app/build/reports/androidTests/dpad-visual/lan-proxy-confirm.png
 echo "=== Emulator instrumentation tests passed ==="

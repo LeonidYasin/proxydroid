@@ -37,25 +37,28 @@ object NetworkUtils {
         }
     }
 
-    fun getGatewayIp(context: Context): String? {
-        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE)
-            as? ConnectivityManager ?: return null
-        // activeNetwork becomes the VPN itself once the tunnel is established.
-        // Inspect only physical networks, preferring the current default network.
+    data class PhysicalGateway(val network: android.net.Network, val address: String, val prefix: Int, val gateway: String) {
+        val signature get() = "${network.networkHandle}/$address/$prefix/$gateway"
+    }
+
+    /** Prefer the physical default, then Wi-Fi/Ethernet underneath our VPN. */
+    fun physicalGateway(context: Context): PhysicalGateway? {
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return null
         val networks = (listOfNotNull(cm.activeNetwork) + cm.allNetworks.toList()).distinct()
         for (network in networks) {
             val caps = cm.getNetworkCapabilities(network) ?: continue
-            if (!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) ||
-                !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)) continue
+            if (!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN) ||
+                !(caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) || caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET))) continue
             val lp = cm.getLinkProperties(network) ?: continue
-            val gateway = lp.routes.asSequence()
-                .filter { it.isDefaultRoute }
-                .mapNotNull { it.gateway }
-                .firstOrNull { it is Inet4Address && !it.isAnyLocalAddress }
-            if (gateway != null) return gateway.hostAddress
+            val address = lp.linkAddresses.firstOrNull { it.address is Inet4Address && !it.address.isAnyLocalAddress && !it.address.isLoopbackAddress } ?: continue
+            val gateway = lp.routes.asSequence().filter { it.isDefaultRoute }
+                .mapNotNull { it.gateway }.firstOrNull { it is Inet4Address && !it.isAnyLocalAddress } ?: continue
+            return PhysicalGateway(network, address.address.hostAddress ?: continue, address.prefixLength, gateway.hostAddress ?: continue)
         }
         return null
     }
+
+    fun getGatewayIp(context: Context): String? = physicalGateway(context)?.gateway
 
     /**
      * Quick liveness probe for an upstream proxy.
