@@ -33,9 +33,12 @@ class VpnRecoveryTest {
                     Intent(context, ProxyDroidVpnService::class.java).putExtras(ProxyController.buildExtras(profile)))
                 waitFor { Utils.isWorking() }
                 assertNotNull(Utils.activeRouting.value)
+                waitFor { Tun2SocksHelper.readRuntimeHealth()?.running == true }
+                assertFalse(Tun2SocksHelper.readRuntimeHealth()!!.taskFinished)
                 assertTrue(VpnRecovery.stopAndAwait(context))
                 assertFalse(Utils.isWorking()); assertFalse(Utils.isConnecting())
                 assertNull(Utils.activeRouting.value); assertNull(Utils.activeUpstream.value)
+                assertFalse(Tun2SocksHelper.readRuntimeHealth()!!.running)
             }
         } finally { VpnRecovery.stopAndAwait(context) }
         Unit

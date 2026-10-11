@@ -16,7 +16,7 @@ class InternetActionsTest {
     @Test fun offersYouTubeOnlyAfterVerifiedConnectedState() {
         var clicked = false
         compose.setContent { MaterialTheme { InternetActions(MainUiState(isWorking = true, internetAvailable = true), { clicked = true }, {}) } }
-        compose.onNodeWithTag("open-youtube").assertIsDisplayed().assertIsFocused().performClick()
+        compose.onNodeWithTag("open-youtube").assertIsDisplayed().performClick()
         compose.runOnIdle { assertTrue(clicked) }
     }
     @Test fun noYouTubeForUnverifiedInternet() {
@@ -27,32 +27,33 @@ class InternetActionsTest {
         compose.setContent { MaterialTheme { InternetActions(MainUiState(isWorking = false, internetAvailable = true), {}, {}) } }
         compose.onNodeWithTag("open-youtube").assertDoesNotExist()
     }
-    @Test fun verifiedSuccessMovesRemoteFocusFromConnectionToYouTube() {
+    @Test fun verifiedSuccessKeepsRemoteFocusOnConnection() {
         val state = mutableStateOf(MainUiState())
         compose.setContent { MaterialTheme { MainScreen(state.value, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}) } }
         compose.onNodeWithTag("connection-row").assertIsFocused()
         compose.runOnIdle { state.value = MainUiState(isWorking = true, internetChecking = true) }
         compose.onNodeWithTag("open-youtube").assertDoesNotExist()
         compose.runOnIdle { state.value = MainUiState(isWorking = true, internetAvailable = true) }
-        compose.onNodeWithTag("open-youtube").assertIsDisplayed().assertIsFocused()
+        compose.onNodeWithTag("open-youtube").assertIsDisplayed()
+        compose.onNodeWithTag("connection-row").assertIsFocused()
     }
     @Test fun repeatVerificationDoesNotStealFocusAgain() {
         val state = mutableStateOf(MainUiState(isWorking = true, internetAvailable = true))
         compose.setContent { MaterialTheme { MainScreen(state.value, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}) } }
-        compose.onNodeWithTag("open-youtube").assertIsFocused()
+        compose.onNodeWithTag("connection-row").assertIsFocused()
         compose.onNodeWithTag("connection-row").performSemanticsAction(SemanticsActions.RequestFocus) { it() }
         compose.onNodeWithTag("connection-row").assertIsFocused()
         compose.runOnIdle { state.value = state.value.copy(internetChecking = true, internetAvailable = null) }
         compose.runOnIdle { state.value = state.value.copy(internetChecking = false, internetAvailable = true) }
         compose.onNodeWithTag("connection-row").assertIsFocused()
     }
-    @Test fun reconnectOffersFocusAgain() {
+    @Test fun reconnectRestoresFirstRowInsteadOfYouTube() {
         val state = mutableStateOf(MainUiState(isWorking = true, internetAvailable = true))
         compose.setContent { MaterialTheme { MainScreen(state.value, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}) } }
-        compose.onNodeWithTag("open-youtube").assertIsFocused()
+        compose.onNodeWithTag("connection-row").assertIsFocused()
         compose.runOnIdle { state.value = MainUiState() }
         compose.onNodeWithTag("open-youtube").assertDoesNotExist()
         compose.runOnIdle { state.value = MainUiState(isWorking = true, internetAvailable = true) }
-        compose.onNodeWithTag("open-youtube").assertIsFocused()
+        compose.onNodeWithTag("connection-row").assertIsFocused()
     }
 }

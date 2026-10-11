@@ -1,7 +1,9 @@
 package org.proxydroid.ui
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotFocused
@@ -93,6 +95,32 @@ class MainScreenTvTest {
         compose.onNodeWithTag("connection-row").assertIsFocused().assertIsDisplayed()
             .performKeyInput { pressKey(Key.DirectionCenter) }
         compose.runOnIdle { assertEquals(1, calls); assertFalse(requested) }
+    }
+    @Test fun rightOnConnectionNeverJumpsToPortAndReconnectRestoresFirstRow() {
+        val state = mutableStateOf(MainUiState())
+        compose.setContent { MaterialTheme { MainScreen(state.value, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}) } }
+        compose.onNodeWithTag("connection-row").performKeyInput { repeat(3) { pressKey(Key.DirectionRight) } }
+        compose.onNodeWithTag("connection-row").assertIsFocused()
+        compose.runOnIdle { state.value = state.value.copy(isWorking = true, internetAvailable = true) }
+        compose.onNodeWithTag("connection-row").assertIsFocused()
+        compose.onNodeWithTag("setting-Port").performScrollTo().performSemanticsAction(SemanticsActions.RequestFocus)
+        compose.onNodeWithTag("setting-Port").assertIsFocused()
+        compose.runOnIdle { state.value = state.value.copy(isWorking = false) }
+        compose.onNodeWithTag("connection-row").assertIsFocused().assertIsDisplayed()
+        compose.onNodeWithTag("connection-row").performKeyInput { pressKey(Key.DirectionRight) }
+        compose.onNodeWithTag("connection-row").assertIsFocused()
+        compose.runOnIdle { state.value = state.value.copy(isConnecting = true) }
+        compose.onNodeWithTag("connection-row").assertIsFocused()
+        compose.runOnIdle { state.value = state.value.copy(isConnecting = false, isWorking = true, internetAvailable = false) }
+        compose.onNodeWithTag("connection-row").assertIsFocused().assertIsDisplayed()
+    }
+    @Test fun successfulPeriodicProbeNeverStealsUserFocus() {
+        val state = mutableStateOf(MainUiState(isWorking = true, internetAvailable = false))
+        compose.setContent { MaterialTheme { MainScreen(state.value, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}) } }
+        compose.onNodeWithTag("setting-Port").performScrollTo().performSemanticsAction(SemanticsActions.RequestFocus)
+        compose.onNodeWithTag("setting-Port").assertIsFocused()
+        compose.runOnIdle { state.value = state.value.copy(internetAvailable = true) }
+        compose.onNodeWithTag("setting-Port").assertIsFocused()
     }
 
 }

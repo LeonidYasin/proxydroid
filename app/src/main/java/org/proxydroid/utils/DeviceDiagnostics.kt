@@ -55,7 +55,8 @@ object DeviceDiagnostics {
         } else lines += "Actual app routing unavailable: configured mode ${if (profile.isBypassApps) "bypass list" else if (profile.proxyApps.isNotBlank()) "allow-list" else "all apps"}. Connect VPN to inspect applied YouTube routing."
         if (active && (profile.host != endpoint.host || profile.port != endpoint.port || profile.proxyType != endpoint.type || profile.user.takeIf { it.isNotEmpty() } != endpoint.user || profile.password.takeIf { it.isNotEmpty() } != endpoint.password))
             lines += "WARNING: edited profile differs from running upstream (including possible auth changes). Results use ACTUAL active upstream; reconnect VPN to apply edits."
-        lines += "Limits: native IPv4 TCP + intercepted DNS; generic UDP/QUIC and complete IPv6 tunneling are not implemented. No native byte/packet health counter is claimed."
+        lines += "Limits: native IPv4 TCP + intercepted DNS; generic UDP/QUIC and complete IPv6 tunneling are not implemented. Runtime aggregate counters below do not prove end-to-end VPN or video health."
+        lines += Tun2SocksHelper.readRuntimeHealth()?.lines() ?: listOf("Native runtime observation unavailable; do not infer stopped/healthy from missing JNI status")
         lines += "Recent VPN lifecycle (timestamps in epoch ms; no credentials):"
         lines += Utils.vpnHistory()
         val route = ProbeRoute(resolve = { host ->

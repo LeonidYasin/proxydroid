@@ -77,6 +77,7 @@ class ProxyDroid : ComponentActivity() {
                     onCheckYouTube = viewModel::checkYouTube,
                     onShowDiagnostics = viewModel::showDiagnostics,
                     onRecovery = { recoveryVisible = true },
+                    focusSuspended = recoveryVisible || updateState.visible,
                     onLanAutoScan = viewModel::setLanAutoScan,
                     onLanScan = viewModel::scanLan,
                     onLanCancel = viewModel::cancelLanScan,

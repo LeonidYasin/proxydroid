@@ -75,6 +75,7 @@ import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.platform.testTag
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -115,6 +116,7 @@ fun MainScreen(
     onCheckYouTube: () -> Unit = {},
     onShowDiagnostics: () -> Unit = {},
     onRecovery: () -> Unit = {},
+    focusSuspended: Boolean = false,
     onLanAutoScan: (Boolean) -> Unit = {},
     onLanScan: () -> Unit = {},
     onLanCancel: () -> Unit = {},
@@ -193,7 +195,7 @@ fun MainScreen(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            ConnectionCard(state = state, onToggle = onToggle, onCheckAlive = onCheckAlive, focusRequester = connectionFocus, onOpenYouTube = onOpenYouTube, onDiagnostics = onRunDiagnostics)
+            ConnectionCard(state = state, onToggle = onToggle, onCheckAlive = onCheckAlive, focusRequester = connectionFocus, onOpenYouTube = onOpenYouTube, onDiagnostics = onRunDiagnostics, focusSuspended = focusSuspended || state.diagnosticVisible)
             ConnectionDiagnostics(state, onRunDiagnostics, onCheckYouTube, onShowDiagnostics)
             AutoGatewayCard(
                 enabled = state.profile.useGatewayAsHost,
@@ -250,17 +252,23 @@ private fun ConnectionCard(
     focusRequester: FocusRequester,
     onOpenYouTube: () -> Unit,
     onDiagnostics: () -> Unit,
+    focusSuspended: Boolean,
 ) {
     // Request inside Scaffold's subcomposition, after the target exists.
     val inputMode = LocalInputModeManager.current
-    var initialFocusSet by remember { mutableStateOf(false) }
-    LaunchedEffect(state.isConnecting) {
-        if (!initialFocusSet && !(state.isWorking && state.internetAvailable == true && !state.internetChecking)) {
-            // Foundation switches/buttons reject focus in touch mode. Enter
-            // DPAD/keyboard mode before assigning the initial remote focus.
+    var placed by remember { mutableStateOf(false) }
+    var lastConnectionState by remember { mutableStateOf<Pair<Boolean, Boolean>?>(null) }
+    val connectionState = state.isWorking to state.isConnecting
+    LaunchedEffect(connectionState, placed, focusSuspended) {
+        // Structural removal of liveness/actions otherwise lets Compose choose
+        // a spatial neighbour such as Port. Re-anchor only on session changes,
+        // never on periodic probe/internet success updates or while a popup owns focus.
+        if (focusSuspended) { lastConnectionState = null; return@LaunchedEffect }
+        if (placed && lastConnectionState != connectionState) {
             inputMode.requestInputMode(InputMode.Keyboard)
+            withFrameNanos { }
             focusRequester.requestFocus()
-            initialFocusSet = true
+            lastConnectionState = connectionState
         }
     }
     val on = state.isWorking
@@ -276,6 +284,8 @@ private fun ConnectionCard(
         Row(
             modifier = Modifier.fillMaxWidth().heightIn(min = 84.dp)
                 .focusRequester(focusRequester)
+                .onGloballyPositioned { placed = true }
+                .focusProperties { left = FocusRequester.Cancel; right = FocusRequester.Cancel }
                 .tvRemoteFocus().testTag("connection-row")
                 .toggleable(value = on || state.isConnecting,
                     role = Role.Switch, onValueChange = onToggle)
@@ -313,32 +323,13 @@ private fun ConnectionCard(
 @OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
 @Composable
 internal fun InternetActions(state: MainUiState, onOpenYouTube: () -> Unit, onRetry: () -> Unit) {
-    val youtubeFocus = remember { FocusRequester() }
-    val youtubeView = remember { BringIntoViewRequester() }
-    val inputMode = LocalInputModeManager.current
-    var focusedThisConnection by remember { mutableStateOf(false) }
-    LaunchedEffect(state.isWorking) {
-        if (!state.isWorking) focusedThisConnection = false
-    }
     if (!state.isWorking) return
     when {
         state.internetChecking -> Text("Checking internet through proxy…", style = MaterialTheme.typography.bodySmall)
         state.internetAvailable == true -> {
             Text("HTTPS test succeeded through proxy — not a full VPN or video test", style = MaterialTheme.typography.bodySmall)
             TextButton(onClick = onOpenYouTube, modifier = Modifier
-                .tvRemoteFocus().bringIntoViewRequester(youtubeView)
-                .focusRequester(youtubeFocus).testTag("open-youtube")) { Text("Open YouTube") }
-            // First verified success per connection: show the action and hand off
-            // the remote focus. Retry/poll updates must not repeatedly steal it.
-            LaunchedEffect(Unit) {
-                if (!focusedThisConnection) {
-                    inputMode.requestInputMode(InputMode.Keyboard)
-                    withFrameNanos { } // Wait for the inserted action's layout.
-                    youtubeView.bringIntoView()
-                    youtubeFocus.requestFocus()
-                    focusedThisConnection = true
-                }
-            }
+                .tvRemoteFocus().testTag("open-youtube")) { Text("Open YouTube") }
         }
         state.internetAvailable == false -> {
             Text("Internet through proxy could not be verified", color = MaterialTheme.colorScheme.error,
@@ -683,6 +674,7 @@ private fun ToggleRow(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 56.dp)
+            .focusProperties { left = FocusRequester.Cancel; right = FocusRequester.Cancel }
             .tvRemoteFocus()
             .toggleable(checked, role = Role.Switch, onValueChange = onChange)
             .padding(8.dp),
