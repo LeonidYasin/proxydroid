@@ -50,6 +50,12 @@ class ConnectionDiagnosticsTest {
         val report = org.proxydroid.utils.DiagnosticReport(org.proxydroid.utils.DiagnosticKind.INTERNET, "test", (1..250).map { "Long diagnostic line $it" }, emptyList())
         compose.setContent { MaterialTheme { ConnectionDiagnosticDialog(MainUiState(diagnosticVisible = true, diagnosticReport = report), {}, {}) } }
         compose.onNodeWithTag("share-diagnostic-qr").assertIsFocused().assertIsDisplayed()
+        val panel = compose.onNodeWithTag("diagnostic-actions").getUnclippedBoundsInRoot()
+        for (tag in listOf("scroll-diagnostic-up", "scroll-diagnostic-down", "close-diagnostic-report", "copy-diagnostic-report", "share-diagnostic-qr")) {
+            val button = compose.onNodeWithTag(tag).getUnclippedBoundsInRoot()
+            assertTrue("Whole $tag within fixed panel", button.left >= panel.left && button.right <= panel.right && button.top >= panel.top && button.bottom <= panel.bottom)
+        }
+        saveScreen("diagnostic-dpad-report.png")
         compose.onNodeWithTag("share-diagnostic-qr").performKeyInput { pressKey(Key.DirectionLeft) }
         compose.onNodeWithTag("copy-diagnostic-report").assertIsFocused().assertIsDisplayed()
         compose.onNodeWithTag("copy-diagnostic-report").performKeyInput { pressKey(Key.DirectionUp) }
@@ -63,6 +69,10 @@ class ConnectionDiagnosticsTest {
         compose.onNodeWithTag("share-diagnostic-qr").performKeyInput { pressKey(Key.DirectionCenter) }
         compose.waitUntil(10000) { compose.onAllNodesWithTag("diagnostic-share-qr").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("close-diagnostic-share").assertIsFocused().assertIsDisplayed()
+        val popup = compose.onNodeWithTag("diagnostic-share-dialog").getUnclippedBoundsInRoot()
+        val qr = compose.onNodeWithTag("diagnostic-share-qr").getUnclippedBoundsInRoot()
+        assertTrue("Whole QR within popup", qr.left >= popup.left && qr.right <= popup.right && qr.top >= popup.top && qr.bottom <= popup.bottom)
+        saveScreen("diagnostic-dpad-qr.png")
         compose.onNodeWithTag("close-diagnostic-share").performKeyInput { pressKey(Key.DirectionCenter) }
         compose.onNodeWithTag("diagnostic-share-qr").assertDoesNotExist()
         compose.onNodeWithTag("share-diagnostic-qr").assertIsFocused()
@@ -77,6 +87,22 @@ class ConnectionDiagnosticsTest {
         assertEquals(before, compose.onNodeWithTag("diagnostic-actions").getUnclippedBoundsInRoot())
         compose.onNodeWithTag("scroll-diagnostic-down").performKeyInput { pressKey(Key.DirectionDown) }
         compose.onNodeWithTag("share-diagnostic-qr").assertIsFocused().assertIsDisplayed()
+    }
+    private fun saveScreen(name: String) {
+        val automation = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation
+        val bitmap = checkNotNull(automation.takeScreenshot())
+        val bytes = java.io.ByteArrayOutputStream()
+        assertTrue(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, bytes))
+        val encoded = android.util.Base64.encodeToString(bytes.toByteArray(), android.util.Base64.NO_WRAP)
+        val path = "/data/local/tmp/$name"
+        val ifs = "$" + "{IFS}"
+        fun shell(script: String) {
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(automation.executeShellCommand("sh -c $script")).use { it.readBytes() }
+        }
+        shell(":>$path.b64")
+        for (chunk in encoded.chunked(16_384)) shell("echo$ifs'$chunk'>>$path.b64")
+        shell("base64$ifs-d<$path.b64>$path;rm$ifs$path.b64")
+        bitmap.recycle()
     }
     @Test fun busyButtonsDoNotLaunchDuplicateChecks() {
         compose.setContent { MaterialTheme { ConnectionDiagnostics(MainUiState(diagnosticRunning = true), {}, {}, {}) } }

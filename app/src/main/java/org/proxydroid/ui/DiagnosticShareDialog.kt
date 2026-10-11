@@ -67,13 +67,38 @@ fun DiagnosticShareDialog(report: String, onDismiss: () -> Unit) {
         catch (failure: Exception) { error = failure.message ?: "Не удалось открыть локальную передачу" }
         finally { local?.close() }
     }
-    AlertDialog(onDismissRequest = onDismiss, title = { Text("Отчёт на смартфон") }, text = {
-        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Телефон и приставка должны быть в одной Wi-Fi/локальной сети. Отсканируйте QR камерой: браузер скачает TXT.", style = MaterialTheme.typography.bodySmall)
-            if (error == null) image?.let { Image(it.asImageBitmap(), "QR для скачивания отчёта", Modifier.size(200.dp).testTag("diagnostic-share-qr")) }
-            if (error == null) server?.let { Text(it.url, style = MaterialTheme.typography.bodySmall) }
-            error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            Text("Ссылка действует до 5 минут и закрывается вместе с этим окном. Это локальный HTTP, не шифрованная передача: используйте доверенную сеть. Отчёт содержит адреса сети/модель, но не пароль прокси. QR даёт доступ любому, кто его видит. Если не открывается — проверьте VPN телефона и изоляцию клиентов Wi-Fi.", style = MaterialTheme.typography.bodySmall)
+    val height = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp - 48.dp).coerceAtLeast(200.dp)
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.widthIn(max = 900.dp).fillMaxWidth(0.94f).heightIn(max = height).testTag("diagnostic-share-dialog"),
+            shape = MaterialTheme.shapes.extraLarge, tonalElevation = 6.dp) {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Отчёт на смартфон", style = MaterialTheme.typography.titleLarge)
+                BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                    val qrSize = minOf(220.dp, maxHeight, if (maxWidth < 480.dp && maxHeight >= 360.dp) maxHeight / 2 else maxWidth / 2)
+                    @Composable fun qr() {
+                        if (error == null) image?.let { Image(it.asImageBitmap(), "QR для скачивания отчёта", Modifier.size(qrSize).testTag("diagnostic-share-qr")) }
+                    }
+                    @Composable fun information(modifier: Modifier) {
+                        Column(modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Телефон и приставка — в одной локальной сети. Камера телефона откроет скачивание TXT.", style = MaterialTheme.typography.bodySmall)
+                            if (error == null) server?.let { Text(it.url, style = MaterialTheme.typography.bodySmall) }
+                            error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                            Text("До 5 минут, закрытие окна отключает ссылку. Локальный HTTP без шифрования: только доверенная сеть. QR даёт доступ к адресам сети/модели, но не паролю прокси. Если не открывается: VPN телефона / изоляция Wi-Fi клиентов.", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                    if (maxWidth >= 480.dp || maxHeight < 360.dp) {
+                        Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            qr(); information(Modifier.weight(1f))
+                        }
+                    } else {
+                        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                            qr(); information(Modifier.weight(1f).fillMaxWidth())
+                        }
+                    }
+                }
+                TextButton(onClick = onDismiss, modifier = Modifier.tvRemoteFocus().focusRequester(closeFocus).fillMaxWidth().testTag("close-diagnostic-share")) { Text("Закрыть передачу") }
+            }
         }
-    }, confirmButton = { TextButton(onClick = onDismiss, modifier = Modifier.tvRemoteFocus().focusRequester(closeFocus).testTag("close-diagnostic-share")) { Text("Закрыть передачу") } })
+    }
 }

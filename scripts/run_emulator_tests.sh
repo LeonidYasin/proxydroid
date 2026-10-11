@@ -91,4 +91,7 @@ cd "$PROJECT_DIR"
     -Pandroid.testInstrumentationRunnerArguments.httpsTargetHost=127.0.0.1 \
     -Pandroid.testInstrumentationRunnerArguments.httpsTargetPort=18080
 
+mkdir -p app/build/reports/androidTests/dpad-visual
+adb pull /data/local/tmp/diagnostic-dpad-report.png app/build/reports/androidTests/dpad-visual/diagnostic-dpad-report.png
+adb pull /data/local/tmp/diagnostic-dpad-qr.png app/build/reports/androidTests/dpad-visual/diagnostic-dpad-qr.png
 echo "=== Emulator instrumentation tests passed ==="
