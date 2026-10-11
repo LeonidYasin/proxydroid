@@ -25,7 +25,11 @@ public class MinifiedReleaseSmokeTest {
         assertEquals("LocProxyTV", context.getApplicationInfo().loadLabel(context.getPackageManager()).toString());
         assertEquals(0, context.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE);
         android.content.pm.ActivityInfo info = context.getPackageManager().getActivityInfo(
-                new android.content.ComponentName(context, "org.proxydroid.ProxyDroid"), 0);
+                new android.content.ComponentName(context, "org.proxydroid.LocProxyTV"), 0);
+        assertEquals("org.proxydroid.ProxyDroid", info.targetActivity);
+        assertEquals("LocProxyTV", info.nonLocalizedLabel.toString());
+        assertEquals("LocProxyTV", context.getApplicationInfo().nonLocalizedLabel.toString());
+        assertNotNull(context.getPackageManager().getActivityInfo(new android.content.ComponentName(context, "org.proxydroid.ProxyDroid"), 0));
         assertEquals("LocProxyTV", info.loadLabel(context.getPackageManager()).toString());
         saveDrawable(context, info.loadBanner(context.getPackageManager()), "launcher-banner.png", 320, 180);
         saveDrawable(context, info.loadIcon(context.getPackageManager()), "launcher-icon.png", 108, 108);
@@ -42,8 +46,10 @@ public class MinifiedReleaseSmokeTest {
     @Test(timeout = 60000) public void optimizedLauncherStarts() throws Exception {
         Log.i("ReleaseSmoke", "launcher start");
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
-        Intent intent = new Intent().setClassName(context, "org.proxydroid.ProxyDroid")
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        Intent intent = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
+        assertNotNull(intent);
+        assertEquals("org.proxydroid.LocProxyTV", intent.getComponent().getClassName());
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         // ActivityScenario has a bounded lifecycle transition; never use the
         // unbounded startActivitySync/waitForIdleSync on a Compose launcher.
         try (ActivityScenario<Activity> scenario = ActivityScenario.launch(intent)) {

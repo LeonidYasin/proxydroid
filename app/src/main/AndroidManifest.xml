@@ -21,6 +21,7 @@
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
     <queries>
+        <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.HOME" /></intent>
         <package android:name="com.google.android.youtube.tv" />
         <package android:name="com.google.android.youtube" />
         <intent><action android:name="android.intent.action.VIEW" /><data android:scheme="https" /></intent>
@@ -34,7 +35,7 @@
         android:icon="@mipmap/locproxy_launcher"
         android:roundIcon="@mipmap/locproxy_launcher"
         android:banner="@drawable/locproxy_tv_banner"
-        android:label="@string/app_name"
+        android:label="LocProxyTV"
         android:theme="@style/Theme.ProxyDroid"
         android:usesCleartextTraffic="true">
 
@@ -42,23 +43,35 @@
             android:name="ProxyDroid"
             android:icon="@mipmap/locproxy_launcher"
             android:banner="@drawable/locproxy_tv_banner"
-            android:label="@string/app_name"
+            android:label="LocProxyTV"
             android:theme="@style/Theme.ProxyDroid"
+            android:exported="true">
+        </activity>
+        <!-- Fresh launcher identity for OEM launchers that retain the old
+             Activity name/label. Keep the original component callable for
+             existing favourites, notifications, consent and restart intents.
+             Package, signer, data and VPN identity stay unchanged. -->
+        <activity-alias
+            android:name=".LocProxyTV"
+            android:targetActivity="ProxyDroid"
+            android:icon="@mipmap/locproxy_launcher"
+            android:label="LocProxyTV"
+            android:enabled="true"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
-        </activity>
+        </activity-alias>
         <activity android:name=".RestartActivity" android:process=":restart"
             android:exported="false" android:excludeFromRecents="true" />
         <activity
             android:name=".AppManager"
-            android:label="@string/app_name" />
+            android:label="LocProxyTV" />
         <activity
             android:name=".BypassListActivity"
-            android:label="@string/app_name" />
+            android:label="LocProxyTV" />
 
         <provider
             android:name=".update.UpdateFileProvider"

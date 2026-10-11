@@ -13,7 +13,15 @@ features = {x.get(ANDROID + 'name'): x.get(ANDROID + 'required') for x in manife
 assert features['android.software.leanback'] == 'false'
 assert features['android.hardware.touchscreen'] == 'false'
 activity = next(x for x in app.findall('activity') if x.get(ANDROID + 'name') == 'ProxyDroid')
-categories = {x.get(ANDROID + 'name') for x in activity.findall('intent-filter/category')}
+alias = next(x for x in app.findall('activity-alias') if x.get(ANDROID + 'name') == '.LocProxyTV')
+assert alias.get(ANDROID + 'targetActivity') == activity.get(ANDROID + 'name')
+assert alias.get(ANDROID + 'label') == 'LocProxyTV'
+assert alias.get(ANDROID + 'icon') == '@mipmap/locproxy_launcher'
+assert app.get(ANDROID + 'label') == 'LocProxyTV'
+assert activity.get(ANDROID + 'label') == 'LocProxyTV'
+assert activity.get(ANDROID + 'exported') == 'true'  # legacy favourites remain callable
+assert not activity.findall('intent-filter/category')  # no duplicate launcher entry
+categories = {x.get(ANDROID + 'name') for x in alias.findall('intent-filter/category')}
 assert 'android.intent.category.LAUNCHER' in categories
 assert 'android.intent.category.LEANBACK_LAUNCHER' in categories
 ET.parse(ROOT / 'app/src/main/res/drawable/locproxy_tv_banner.xml')

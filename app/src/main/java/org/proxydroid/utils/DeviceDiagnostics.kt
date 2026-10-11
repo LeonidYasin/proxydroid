@@ -34,6 +34,7 @@ object DeviceDiagnostics {
             "Android ${Build.VERSION.RELEASE} / API ${Build.VERSION.SDK_INT}; model ${Build.MANUFACTURER} ${Build.MODEL}",
             "Scope: ${if (active) "ACTUAL active service upstream" else "CONFIGURED profile; VPN is not running — no TUN test"}",
             "Physical network: ${if (network == null) "none found" else network.toString()}; interface ${lp?.interfaceName ?: "unknown"}; MTU ${lp?.mtu ?: 0}")
+        lines += LauncherIdentity.lines(context)
         val transports = listOf(NetworkCapabilities.TRANSPORT_WIFI to "Wi-Fi", NetworkCapabilities.TRANSPORT_ETHERNET to "Ethernet", NetworkCapabilities.TRANSPORT_CELLULAR to "cellular").filter { caps?.hasTransport(it.first) == true }.joinToString { it.second }
         lines += "Transport: ${transports.ifEmpty { "unknown" }}; Android VALIDATED=${caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) ?: false}; CAPTIVE_PORTAL=${caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL) ?: false} (platform signals, not a definitive proxy test)"
         lines += "Addresses: ${lp?.linkAddresses?.joinToString { it.toString() } ?: "unknown"}; gateway ${NetworkUtils.getGatewayIp(context) ?: "unknown"}"

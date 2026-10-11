@@ -32,7 +32,7 @@ adb shell settings put system user_rotation 1
 adb shell wm density 160
 adb shell cmd uimode night yes
 adb shell am force-stop org.proxydroid
-adb shell am start -W -n org.proxydroid/.ProxyDroid
+adb shell am start -W -n org.proxydroid/.LocProxyTV
 sleep 2
 adb exec-out screencap -p > app/build/reports/release-smoke/tv-initial-focus.png
 for i in $(seq 1 14); do adb shell input keyevent 20; done
@@ -44,6 +44,6 @@ adb shell wm size 720x1280
 adb shell wm density 320
 adb shell cmd uimode night no
 adb shell am force-stop org.proxydroid
-adb shell am start -W -n org.proxydroid/.ProxyDroid
+adb shell am start -W -n org.proxydroid/.LocProxyTV
 sleep 2
 adb exec-out screencap -p > app/build/reports/release-smoke/phone-layout.png
