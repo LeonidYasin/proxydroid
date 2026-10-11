@@ -153,6 +153,7 @@ tasks.configureEach { task ->
 }
 
 dependencies {
+    implementation "com.google.zxing:core:3.5.3"
     // Local JARs (none expected today, kept for parity with legacy layout)
     implementation fileTree(dir: 'libs', include: ['*.jar'])
 

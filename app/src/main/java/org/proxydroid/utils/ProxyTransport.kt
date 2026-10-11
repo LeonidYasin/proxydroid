@@ -154,8 +154,8 @@ object ProxyTransport {
     fun readHeaders(input: DataInputStream, stage: ProbeStage = ProbeStage.HTTP): Map<String, String> {
         val headers = mutableMapOf<String, String>(); var bytes = 0
         while (true) {
-            val line = readLine(input, stage); bytes += line.length + 2
-            expect(bytes <= 8192, stage, "HTTP_HEADERS_LIMIT", "HTTP headers exceeded 8192-byte diagnostic limit")
+            val line = readLine(input, stage, 8192); bytes += line.length + 2
+            expect(bytes <= 65536, stage, "HTTP_HEADERS_LIMIT", "HTTP headers exceeded 65536-byte diagnostic limit; this is a parser limit, not proof of a dead proxy")
             if (line.isEmpty()) return headers
             val pos = line.indexOf(':'); expect(pos > 0, stage, "INVALID_HTTP_HEADER", "Malformed HTTP header; raw header omitted")
             val name = line.substring(0, pos).lowercase(); val value = line.substring(pos + 1).trim()
@@ -178,13 +178,13 @@ object ProxyTransport {
             override fun read(b: ByteArray, off: Int, len: Int): Int { prepare(); return `in`.read(b, off, len) }
         })
     }
-    fun readLine(input: DataInputStream, stage: ProbeStage = ProbeStage.HTTP): String {
+    fun readLine(input: DataInputStream, stage: ProbeStage = ProbeStage.HTTP, limit: Int = 1024): String {
         val line = StringBuilder()
-        while (line.length < 1024) {
+        while (line.length < limit) {
             val byte = input.readUnsignedByte()
             if (byte == 10) return line.toString().removeSuffix("\r")
             line.append(byte.toChar())
         }
-        throw ProbeProblem(stage, "HTTP_LINE_LIMIT", "HTTP line exceeded 1024-byte diagnostic limit; raw text omitted")
+        throw ProbeProblem(stage, "HTTP_LINE_LIMIT", "HTTP line exceeded $limit-byte diagnostic limit; parser limit, not proof of a dead proxy; raw text omitted")
     }
 }

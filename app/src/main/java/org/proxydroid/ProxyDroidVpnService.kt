@@ -38,6 +38,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.ensureActive
 import android.preference.PreferenceManager
 import org.proxydroid.utils.BootStatus
 import org.proxydroid.utils.ProxyEndpoint
@@ -49,6 +50,8 @@ class ProxyDroidVpnService : VpnService() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var vpnJob: Job? = null
+    private val lifecycleLock = Any()
+    private val generation = java.util.concurrent.atomic.AtomicLong(0)
 
 
     companion object {
@@ -60,6 +63,7 @@ class ProxyDroidVpnService : VpnService() {
         private const val VPN_ROUTE = "0.0.0.0"
         const val EXTRA_WAIT_NETWORK = "wait_for_network"
         const val ACTION_AUTOSTART = "org.proxydroid.action.AUTOSTART"
+        const val EXTRA_STOP_ACK = "stop_ack"
         const val ACTION_STOP = "org.proxydroid.action.STOP_VPN"
     }
 
@@ -80,9 +84,25 @@ class ProxyDroidVpnService : VpnService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
-            vpnJob?.cancel()
-            stopVpn(); Utils.setWorking(false); Utils.setConnecting(false)
-            stopForeground(STOP_FOREGROUND_REMOVE); stopSelf()
+            Utils.recordVpnEvent("Stop requested")
+            generation.incrementAndGet()
+            val old = vpnJob
+            old?.cancel()
+            @Suppress("DEPRECATION")
+            val acknowledgement = intent.getParcelableExtra<android.os.ResultReceiver>(EXTRA_STOP_ACK)
+            serviceScope.launch {
+                old?.join()
+                val stopped = stopVpn()
+                Utils.recordVpnEvent(if (stopped) "Stop complete: native tasks and TUN released" else "Stop incomplete; reconnect blocked")
+                Utils.setWorking(false); Utils.setConnecting(false)
+                if (stopped) {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    // Keep an acknowledged service idle for an immediate reconnect.
+                    // A late onDestroy from stopSelf must not tear down the new session.
+                    if (acknowledgement == null) stopSelf(startId)
+                }
+                acknowledgement?.send(if (stopped) 0 else 1, null)
+            }
             return START_NOT_STICKY
         }
         // Duplicate boot/update events must not restart a live or waiting VPN.
@@ -112,6 +132,8 @@ class ProxyDroidVpnService : VpnService() {
             return START_NOT_STICKY
         }
         vpnJob?.cancel()
+        val session = generation.incrementAndGet()
+        Utils.recordVpnEvent("Start requested; generation=$session")
         Utils.setConnecting(true)
         vpnJob = serviceScope.launch {
             try {
@@ -134,7 +156,8 @@ class ProxyDroidVpnService : VpnService() {
                     val current = Profile().apply { getProfile(settings); this.host = this@ProxyDroidVpnService.host }
                     current.setProfile(settings); settings.edit().putString(profileId, current.toString()).apply()
                 }
-                startVpn()
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                startVpn(session)
                 if (waitNetwork) BootStatus.record(this@ProxyDroidVpnService,
                     if (Utils.isWorking()) "Boot VPN started successfully" else "Boot VPN failed; see connection error")
             } catch (cancelled: CancellationException) { throw cancelled }
@@ -149,8 +172,9 @@ class ProxyDroidVpnService : VpnService() {
     }
 
     override fun onDestroy() {
-        super.onDestroy()
+        generation.incrementAndGet(); vpnJob?.cancel()
         stopVpn()
+        super.onDestroy()
         Utils.setWorking(false)
         Utils.setConnecting(false)
         serviceScope.cancel()
@@ -158,9 +182,13 @@ class ProxyDroidVpnService : VpnService() {
     }
 
     override fun onRevoke() {
-        super.onRevoke()
+        Utils.recordVpnEvent("Android revoked VPN ownership")
+        generation.incrementAndGet(); vpnJob?.cancel()
         stopVpn()
-        stopSelf()
+        Utils.setWorking(false); Utils.setConnecting(false)
+        Utils.setLastError("VPN access revoked by Android (another VPN, system settings or always-on policy). Reconnect and confirm Android permission.")
+        stopForeground(STOP_FOREGROUND_REMOVE); stopSelf()
+        super.onRevoke()
     }
 
     private fun createNotification(status: String = getString(R.string.vpn_running)): Notification {
@@ -192,7 +220,10 @@ class ProxyDroidVpnService : VpnService() {
             .build()
     }
 
-    private fun startVpn() {
+    private fun startVpn(session: Long) = synchronized(lifecycleLock) {
+        if (generation.get() != session) return@synchronized
+        check(tun2SocksHelper == null && vpnInterface == null) { "Previous VPN cleanup is incomplete. Stop VPN before reconnecting." }
+        check(VpnService.prepare(this) == null) { "Android VPN consent is missing/revoked; another always-on VPN or lockdown may block connection. Open Android VPN settings." }
         Log.d(TAG, "Starting VPN with proxy: $host:$port")
         Utils.setConnecting(true)
 
@@ -242,11 +273,12 @@ class ProxyDroidVpnService : VpnService() {
 
             vpnInterface = builder.establish()
             if (vpnInterface == null) {
+                Utils.setLastError("Android returned no VPN interface. Check VPN consent, another always-on VPN and Block connections without VPN in system settings.")
                 Log.e(TAG, "Failed to establish VPN interface")
                 Utils.setConnecting(false)
                 Utils.setWorking(false)
                 stopSelf()
-                return
+                return@synchronized
             }
 
             val fd = vpnInterface!!.fd
@@ -273,7 +305,7 @@ class ProxyDroidVpnService : VpnService() {
                 Utils.setWorking(false)
                 stopVpn()
                 stopSelf()
-                return
+                return@synchronized
             }
 
             Utils.setLastError(null)
@@ -281,6 +313,7 @@ class ProxyDroidVpnService : VpnService() {
             Utils.setActiveRouting(org.proxydroid.utils.ActiveRouting(if (proxyApps.isNotBlank() && !isBypassApps) appliedAllowed.toSet() else null, appliedExcluded.toSet()))
             Utils.setActiveUpstream(ProxyEndpoint(host, port, proxyType, user.takeIf { it.isNotEmpty() }, password.takeIf { it.isNotEmpty() }))
             Utils.setWorking(true)
+            Utils.recordVpnEvent("VPN established; generation=$session" + if (Build.VERSION.SDK_INT >= 29) "; always-on=$isAlwaysOn; lockdown=$isLockdownEnabled" else "; always-on policy unavailable on this API")
             (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(NOTIFICATION_ID, createNotification())
             Log.i(TAG, "VPN established and tun2socks running")
         } catch (t: Throwable) {
@@ -294,19 +327,16 @@ class ProxyDroidVpnService : VpnService() {
         }
     }
 
-    private fun stopVpn() {
-        try {
-            tun2SocksHelper?.stop()
-        } catch (t: Throwable) {
+    private fun stopVpn(): Boolean = synchronized(lifecycleLock) {
+        var stopped = true
+        try { tun2SocksHelper?.stop(); tun2SocksHelper = null }
+        catch (t: Throwable) {
+            stopped = false
+            Utils.setLastError("VPN cleanup incomplete: ${t.javaClass.simpleName}. Wait and retry Stop; do not reconnect yet.")
             Log.e(TAG, "tun2socks stop threw", t)
         }
-        tun2SocksHelper = null
-
-        try {
-            vpnInterface?.close()
-        } catch (t: Throwable) {
-            Log.e(TAG, "vpn interface close threw", t)
-        }
-        vpnInterface = null
+        try { vpnInterface?.close(); vpnInterface = null }
+        catch (t: Throwable) { stopped = false; Log.e(TAG, "VPN interface close threw", t) }
+        stopped
     }
 }

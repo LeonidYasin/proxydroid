@@ -39,6 +39,8 @@ object DeviceDiagnostics {
         lines += "Addresses: ${lp?.linkAddresses?.joinToString { it.toString() } ?: "unknown"}; gateway ${NetworkUtils.getGatewayIp(context) ?: "unknown"}"
         lines += "Physical DNS: ${lp?.dnsServers?.joinToString { it.hostAddress ?: "unknown" } ?: "unknown"}"
         if (Build.VERSION.SDK_INT >= 28) lines += "Android Private DNS: active=${lp?.isPrivateDnsActive ?: false}; strict hostname configured=${!lp?.privateDnsServerName.isNullOrBlank()} (in-tunnel DNS uses separate native DoH)"
+        val systemVpn = cm?.allNetworks?.any { cm.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true } == true
+        lines += "Android VPN network present=$systemVpn; LocProxyTV working=${Utils.isWorking()}. Another VPN identity/always-on policy is not generally readable by this app; inspect Android VPN settings. Switching uses prepare/establish, never force-stop of other apps."
         lines += "VPN consent granted=${VpnService.prepare(context) == null}; service flag working=${Utils.isWorking()}; native launch snapshot ${if (routing == null) "not available" else "recorded; not a runtime health probe"}"
         if (routing != null) {
             lines += "ACTUAL routing: ${if (routing.allowed == null) "all apps except exclusions (${routing.excluded.size})" else "allow-list (${routing.allowed.size} installed apps)"}; session age ${((System.currentTimeMillis() - routing.startedAt) / 1000).coerceAtLeast(0)} s"
@@ -53,6 +55,8 @@ object DeviceDiagnostics {
         if (active && (profile.host != endpoint.host || profile.port != endpoint.port || profile.proxyType != endpoint.type || profile.user.takeIf { it.isNotEmpty() } != endpoint.user || profile.password.takeIf { it.isNotEmpty() } != endpoint.password))
             lines += "WARNING: edited profile differs from running upstream (including possible auth changes). Results use ACTUAL active upstream; reconnect VPN to apply edits."
         lines += "Limits: native IPv4 TCP + intercepted DNS; generic UDP/QUIC and complete IPv6 tunneling are not implemented. No native byte/packet health counter is claimed."
+        lines += "Recent VPN lifecycle (timestamps in epoch ms; no credentials):"
+        lines += Utils.vpnHistory()
         val route = ProbeRoute(resolve = { host ->
             val physical = network ?: throw NoRouteToHostException("No physical network")
             val addresses = physical.getAllByName(host)

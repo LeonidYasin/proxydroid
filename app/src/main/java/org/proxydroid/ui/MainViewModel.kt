@@ -91,8 +91,10 @@ class MainViewModel @JvmOverloads constructor(app: Application,
         override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) = refreshOnNetworkChange()
         override fun onLost(network: Network) = refreshOnNetworkChange()
     }
+    private var recovering = false
     private var networkChangeJob: Job? = null
     private fun refreshOnNetworkChange() { viewModelScope.launch {
+        if (recovering) return@launch
         invalidateDiagnostics()
         networkChangeJob?.cancel()
         networkChangeJob = viewModelScope.launch {
@@ -120,7 +122,7 @@ class MainViewModel @JvmOverloads constructor(app: Application,
                 .collect { (w, c, endpoint) ->
                     _state.value = _state.value.copy(isWorking = w, isConnecting = c)
                     // Auto-poll the proxy liveness while the tunnel is active.
-                    if (w) {
+                    if (w && !recovering) {
                         startAlivePolling()
                         if (endpoint != null && lastAutoEndpoint !== endpoint) {
                             lastAutoEndpoint = endpoint
@@ -216,6 +218,14 @@ class MainViewModel @JvmOverloads constructor(app: Application,
 
     fun checkInternet() {
         if (Utils.isWorking()) checkDiagnostics(showReport = false)
+    }
+
+    fun finishRecovery() { recovering = false; refreshGateway() }
+    fun prepareRecovery() {
+        recovering = true
+        dismissDiagnostics(); cancelDiagnostics()
+        aliveJob?.cancel(); gatewayJob?.cancel(); networkChangeJob?.cancel(); pollingJob?.cancel()
+        _state.value = _state.value.copy(isAlive = null, internetAvailable = null)
     }
 
     fun showDiagnostics() { _state.value = _state.value.copy(diagnosticVisible = true) }

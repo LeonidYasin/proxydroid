@@ -32,6 +32,7 @@ class ConnectionDiagnosticsTest {
         compose.onNodeWithTag("scroll-diagnostic-down").assertIsDisplayed().performClick()
         compose.onNodeWithTag("scroll-diagnostic-up").assertIsDisplayed().performClick()
         compose.onNodeWithTag("copy-diagnostic-report").assertIsDisplayed()
+        compose.onNodeWithTag("share-diagnostic-qr").assertIsDisplayed()
     }
     @Test fun busyButtonsDoNotLaunchDuplicateChecks() {
         compose.setContent { MaterialTheme { ConnectionDiagnostics(MainUiState(diagnosticRunning = true), {}, {}, {}) } }

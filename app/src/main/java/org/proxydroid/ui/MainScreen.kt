@@ -113,6 +113,7 @@ fun MainScreen(
     onRunDiagnostics: () -> Unit = {},
     onCheckYouTube: () -> Unit = {},
     onShowDiagnostics: () -> Unit = {},
+    onRecovery: () -> Unit = {},
 ) {
     val scroll = rememberScrollState()
     var menuOpen by remember { mutableStateOf(false) }
@@ -151,6 +152,8 @@ fun MainScreen(
                             onClick = { menuOpen = false; showDeleteConfirm = true },
                             leadingIcon = { Icon(Icons.Default.Delete, null) },
                         )
+                        DropdownMenuItem(text = { Text("Восстановление / перезапуск") },
+                            onClick = { menuOpen = false; onRecovery() })
                         Divider()
                         DropdownMenuItem(
                             text = { Text("Update app") },

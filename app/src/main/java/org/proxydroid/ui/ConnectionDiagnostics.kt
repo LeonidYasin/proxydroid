@@ -17,6 +17,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -54,6 +56,9 @@ internal fun ConnectionDiagnostics(state: MainUiState, onInternet: () -> Unit, o
 @Composable
 fun ConnectionDiagnosticDialog(state: MainUiState, onCancel: () -> Unit, onDismiss: () -> Unit) {
     if (!state.diagnosticVisible) return
+    var share by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(state.diagnosticRunning) { if (state.diagnosticRunning) share = false }
+    if (share) state.diagnosticReport?.let { DiagnosticShareDialog(it.text()) { share = false } }
     val clipboard = LocalClipboardManager.current
     val scroll = rememberScrollState()
     val scope = rememberCoroutineScope()
@@ -80,6 +85,7 @@ fun ConnectionDiagnosticDialog(state: MainUiState, onCancel: () -> Unit, onDismi
             if (state.diagnosticRunning) TextButton(onClick = onCancel, modifier = Modifier.tvRemoteFocus()) { Text("Отменить проверку") }
             else state.diagnosticReport?.let { report ->
                 TextButton(onClick = { clipboard.setText(AnnotatedString(report.text())) }, modifier = Modifier.tvRemoteFocus().testTag("copy-diagnostic-report")) { Text("Скопировать отчёт") }
+                TextButton(onClick = { share = true }, modifier = Modifier.tvRemoteFocus().testTag("share-diagnostic-qr")) { Text("На смартфон · QR") }
             }
         } },
         dismissButton = { TextButton(onClick = onDismiss, modifier = Modifier.tvRemoteFocus()) { Text("Закрыть") } },

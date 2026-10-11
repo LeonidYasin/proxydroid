@@ -19,6 +19,8 @@ struct DnsEntry {
 static DNS_TABLE: LazyLock<ParkMutex<HashMap<IpAddr, DnsEntry>>> =
     LazyLock::new(|| ParkMutex::new(HashMap::new()));
 
+pub fn clear() { DNS_TABLE.lock().clear(); }
+
 const MIN_TTL_SECS: u32 = 60;
 const MAX_TTL_SECS: u32 = 3600;
 const EVICTION_THRESHOLD: usize = 4096;

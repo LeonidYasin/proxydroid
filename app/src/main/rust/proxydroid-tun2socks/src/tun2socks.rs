@@ -72,6 +72,7 @@ static TUN2SOCKS_RUNNING: AtomicBool = AtomicBool::new(false);
 /// cleanly. Held in a `parking_lot::Mutex` because we swap it in/out from
 /// non-async code (JNI thread).
 static SHUTDOWN_TX: ParkMutex<Option<oneshot::Sender<()>>> = ParkMutex::new(None);
+static SESSION: ParkMutex<Option<tokio::task::JoinHandle<()>>> = ParkMutex::new(None);
 
 pub fn start(fd: i32, cfg: UpstreamConfig) -> Result<(), Tun2SocksError> {
     if TUN2SOCKS_RUNNING.swap(true, Ordering::SeqCst) {
@@ -110,7 +111,7 @@ pub fn start(fd: i32, cfg: UpstreamConfig) -> Result<(), Tun2SocksError> {
     let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
     *SHUTDOWN_TX.lock() = Some(shutdown_tx);
 
-    rt.spawn(async move {
+    *SESSION.lock() = Some(rt.spawn(async move {
         if let Err(e) = run_tun2socks(fd, cfg, shutdown_rx).await {
             logging::bridge_log(&format!("tun2socks error: {}", e));
         }
@@ -118,19 +119,26 @@ pub fn start(fd: i32, cfg: UpstreamConfig) -> Result<(), Tun2SocksError> {
         // Drop any leftover sender so a late stop() doesn't think the loop is
         // alive.
         *SHUTDOWN_TX.lock() = None;
+        dns_table::clear();
         info!("tun2socks exited");
-    });
+    }));
 
     Ok(())
 }
 
 /// Request a graceful stop. Idempotent and safe to call from any thread.
-pub fn stop() {
-    TUN2SOCKS_RUNNING.store(false, Ordering::SeqCst);
-    if let Some(tx) = SHUTDOWN_TX.lock().take() {
-        // Receiver dropped means the task already exited — nothing to do.
-        let _ = tx.send(());
+pub fn stop() -> bool {
+    if let Some(tx) = SHUTDOWN_TX.lock().take() { let _ = tx.send(()); }
+    let Some(mut session) = SESSION.lock().take() else { return true; };
+    let Ok(rt) = crate::try_get_runtime() else { return false; };
+    // JNI caller is outside Tokio. Do not advertise a stopped session until
+    // all relay/DNS tasks have been cancelled and their sockets dropped.
+    if rt.block_on(async { tokio::time::timeout(std::time::Duration::from_secs(3), &mut session).await }).is_err() {
+        *SESSION.lock() = Some(session);
+        logging::bridge_log("tun2socks: stop timed out; reconnect refused until old session exits");
+        return false;
     }
+    true
 }
 
 // ---------------------------------------------------------------------------
@@ -198,12 +206,15 @@ async fn run_tun2socks(
         }
     });
 
+    let children = Arc::new(tokio::sync::Mutex::new(tokio::task::JoinSet::new()));
+    let tcp_children = children.clone();
     let cfg_for_accept = cfg.clone();
     let tcp_accept_handle = tokio::spawn(async move {
         while let Some((stream, local_addr, remote_addr)) = tcp_listener.next().await {
             let cfg = cfg_for_accept.clone();
+            while tcp_children.lock().await.try_join_next().is_some() {}
             logging::bridge_log(&format!("tun2socks: TCP {} -> {}", local_addr, remote_addr));
-            tokio::spawn(async move {
+            tcp_children.lock().await.spawn(async move {
                 handle_tcp_stream(stream, local_addr, remote_addr, cfg).await;
             });
         }
@@ -228,8 +239,9 @@ async fn run_tun2socks(
         }
     });
 
+    let dns_children = children.clone();
     let udp_reply_tx = egress_tx.clone();
-    let tun_reader_handle = tokio::spawn(async move {
+    let mut tun_reader_handle = tokio::spawn(async move {
         let mut read_buf = vec![0u8; 65535];
         loop {
             if !TUN2SOCKS_RUNNING.load(Ordering::SeqCst) {
@@ -252,9 +264,10 @@ async fn run_tun2socks(
                     parse_udp_packet(ip_data)
                 {
                     if dst_port == 53 {
+                        while dns_children.lock().await.try_join_next().is_some() {}
                         let reply_tx = udp_reply_tx.clone();
                         let query = payload.to_vec();
-                        tokio::spawn(async move {
+                        dns_children.lock().await.spawn(async move {
                             handle_dns_query(src_ip, src_port, dst_ip, dst_port, query, reply_tx)
                                 .await;
                         });
@@ -281,21 +294,30 @@ async fn run_tun2socks(
     // Wait for either the TUN reader to drain (fd closed) or an explicit
     // shutdown request from `stop()`. Whichever fires first, we then tear down
     // every spawned subtask.
-    tokio::select! {
-        _ = tun_reader_handle => {
+    let reader_finished = tokio::select! {
+        _ = &mut tun_reader_handle => {
             logging::bridge_log("tun2socks: TUN reader finished");
+            true
         }
         _ = shutdown_rx => {
             // Flip the flag so the reader's inner loop will also notice.
             TUN2SOCKS_RUNNING.store(false, Ordering::SeqCst);
             logging::bridge_log("tun2socks: shutdown requested");
+            false
         }
-    }
+    };
 
+    tun_reader_handle.abort();
     runner_handle.abort();
     stack_handle.abort();
     tcp_accept_handle.abort();
     tun_writer_handle.abort();
+    if !reader_finished { let _ = tun_reader_handle.await; }
+    let _ = tcp_accept_handle.await;
+    let _ = runner_handle.await;
+    let _ = stack_handle.await;
+    let _ = tun_writer_handle.await;
+    children.lock().await.shutdown().await;
 
     logging::bridge_log("tun2socks: exiting");
     Ok(())

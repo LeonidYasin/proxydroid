@@ -70,11 +70,7 @@ class Tun2SocksHelper {
     @Synchronized
     fun stop() {
         if (!running) return
-        try {
-            nativeStop()
-        } catch (t: Throwable) {
-            Log.e(TAG, "nativeStop threw", t)
-        }
+        nativeStop() // Failure must reach the stop acknowledgement; never lie about cleanup.
         running = false
     }
 

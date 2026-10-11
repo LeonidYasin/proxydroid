@@ -66,7 +66,8 @@ object ProxyController {
                 action = ProxyDroidVpnService.ACTION_STOP
             }
             context.startService(intent)
-        } catch (_: Exception) {
+        } catch (failure: Exception) {
+            Utils.setLastError("Android could not stop VPN: ${failure.javaClass.simpleName}")
         }
     }
 }
