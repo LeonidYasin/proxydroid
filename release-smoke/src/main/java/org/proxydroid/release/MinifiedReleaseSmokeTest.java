@@ -24,9 +24,18 @@ public class MinifiedReleaseSmokeTest {
         assertEquals("org.proxydroid", context.getPackageName());
         assertEquals("LocProxyTV", context.getApplicationInfo().loadLabel(context.getPackageManager()).toString());
         assertEquals(0, context.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE);
+        android.content.pm.ActivityInfo info = context.getPackageManager().getActivityInfo(
+                new android.content.ComponentName(context, "org.proxydroid.ProxyDroid"), 0);
+        assertEquals("LocProxyTV", info.loadLabel(context.getPackageManager()).toString());
+        saveDrawable(context, info.loadBanner(context.getPackageManager()), "launcher-banner.png", 320, 180);
+        saveDrawable(context, info.loadIcon(context.getPackageManager()), "launcher-icon.png", 108, 108);
         try (ZipFile apk = new ZipFile(context.getApplicationInfo().sourceDir)) {
             assertNotNull(apk.getEntry("assets/pages/about.html"));
-            assertFalse(apk.stream().anyMatch(e -> e.getName().startsWith("assets/armeabi-v7a/") || e.getName().startsWith("assets/x86/")));
+            java.util.Enumeration<? extends java.util.zip.ZipEntry> entries = apk.entries();
+            while (entries.hasMoreElements()) {
+                String name = entries.nextElement().getName();
+                assertFalse(name.startsWith("assets/armeabi-v7a/") || name.startsWith("assets/x86/"));
+            }
         }
     }
 
@@ -58,4 +67,19 @@ public class MinifiedReleaseSmokeTest {
         stop.setAccessible(true);
         stop.invoke(helper);
     }
+    private static void saveDrawable(Context context, android.graphics.drawable.Drawable drawable,
+            String name, int width, int height) throws Exception {
+        assertNotNull(drawable);
+        android.graphics.Bitmap image = android.graphics.Bitmap.createBitmap(width, height,
+                android.graphics.Bitmap.Config.ARGB_8888);
+        drawable.setBounds(0, 0, width, height);
+        drawable.draw(new android.graphics.Canvas(image));
+        java.io.File directory = context.getExternalFilesDir(null);
+        assertNotNull(directory);
+        try (java.io.FileOutputStream out = new java.io.FileOutputStream(new java.io.File(directory, name))) {
+            assertTrue(image.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out));
+        }
+        image.recycle();
+    }
+
 }
