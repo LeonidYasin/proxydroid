@@ -111,8 +111,9 @@ class ConnectivityBroadcastReceiver : BroadcastReceiver() {
 
         if (autoConnect && !Utils.isWorking()) {
             settings.edit().putString("lastSSID", curSSID).apply()
-            Utils.setConnecting(true)
-            ProxyDroidReceiver().onReceive(context, intent)
+            // Connectivity is not a boot intent; do not forward it to the
+            // boot receiver (which deliberately ignores this action).
+            ProxyController.startWithConsent(context, profile, allowConsentUi = false, waitForNetwork = true)
         }
     }
 

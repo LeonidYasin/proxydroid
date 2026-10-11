@@ -33,6 +33,7 @@ cleanup() {
             kill "$pid" 2>/dev/null
         fi
     done
+    if [[ -n "${TARGET_DIR:-}" ]]; then rm -rf "$TARGET_DIR"; fi
 }
 trap cleanup EXIT
 
@@ -43,11 +44,8 @@ start_bg() {
     PIDS+=("$!")
 }
 
-echo "=== Installing APK ==="
-adb install -r "$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
-
-echo "=== Verifying app installation ==="
-adb shell pm list packages | grep org.proxydroid
+# connectedDebugAndroidTest builds and installs the ABI-compatible app/test
+# APKs itself. Do not depend on an old hard-coded universal APK filename.
 
 echo "=== Booting fake upstream proxies on host ==="
 start_bg "SOCKS5 no-auth :1080" \
@@ -59,9 +57,15 @@ start_bg "HTTP CONNECT no-auth :8081" \
 start_bg "HTTP CONNECT user/pass :8082" \
     python3 "$SCRIPT_DIR/http_connect_test_server.py" --port 8082 --auth "$AUTH_USER:$AUTH_PASS" --quiet
 
+# Deterministic local HTTP target: integration tests must not depend on
+# example.com being reachable or on external DNS/network policy.
+TARGET_DIR=$(mktemp -d)
+printf 'ProxyDroid integration test target\n' > "$TARGET_DIR/index.html"
+start_bg "HTTP target :18080" python3 -m http.server 18080 --bind 127.0.0.1 --directory "$TARGET_DIR"
+
 # Give listeners a moment to bind.
 sleep 2
-for port in 1080 1081 8081 8082; do
+for port in 1080 1081 8081 8082 18080; do
     if ! (echo > "/dev/tcp/127.0.0.1/$port") 2>/dev/null; then
         echo "FAIL: nothing listening on 127.0.0.1:$port"
         exit 1
@@ -81,6 +85,13 @@ cd "$PROJECT_DIR"
     -Pandroid.testInstrumentationRunnerArguments.httpProxyPort=8081 \
     -Pandroid.testInstrumentationRunnerArguments.httpProxyAuthPort=8082 \
     -Pandroid.testInstrumentationRunnerArguments.httpProxyAuthUser="$AUTH_USER" \
-    -Pandroid.testInstrumentationRunnerArguments.httpProxyAuthPass="$AUTH_PASS"
+    -Pandroid.testInstrumentationRunnerArguments.httpProxyAuthPass="$AUTH_PASS" \
+    -Pandroid.testInstrumentationRunnerArguments.targetHost=127.0.0.1 \
+    -Pandroid.testInstrumentationRunnerArguments.targetPort=18080 \
+    -Pandroid.testInstrumentationRunnerArguments.httpsTargetHost=127.0.0.1 \
+    -Pandroid.testInstrumentationRunnerArguments.httpsTargetPort=18080
 
+mkdir -p app/build/reports/androidTests/dpad-visual
+adb pull /data/local/tmp/diagnostic-dpad-report.png app/build/reports/androidTests/dpad-visual/diagnostic-dpad-report.png
+adb pull /data/local/tmp/diagnostic-dpad-qr.png app/build/reports/androidTests/dpad-visual/diagnostic-dpad-qr.png
 echo "=== Emulator instrumentation tests passed ==="

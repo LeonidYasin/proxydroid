@@ -6,7 +6,8 @@ use crate::error::Tun2SocksError;
 use crate::logging;
 use crate::tun2socks::{ProxyKind, UpstreamConfig};
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
-use std::sync::OnceLock;
+use std::sync::{Arc, LazyLock};
+use parking_lot::RwLock;
 use tracing::{info, warn};
 
 const DOH_TIMEOUT_SECS: u64 = 5;
@@ -18,32 +19,28 @@ struct DohClient {
     doh_urls: Vec<String>,
 }
 
-static DOH_CLIENT: OnceLock<DohClient> = OnceLock::new();
+static DOH_CLIENT: LazyLock<RwLock<Option<Arc<DohClient>>>> = LazyLock::new(|| RwLock::new(None));
 
-/// Initialise the process-wide DoH client. Subsequent calls are no-ops — the
-/// first proxy configuration wins, matching the lifetime of the tokio runtime.
+pub fn clear() { *DOH_CLIENT.write() = None; }
+
+/// Replace the active DoH client on EVERY VPN session/profile change.
+/// In-flight requests hold an Arc snapshot; no lock is held across await.
 pub fn init_doh_client(cfg: &UpstreamConfig) -> Result<(), Tun2SocksError> {
-    if DOH_CLIENT.get().is_some() {
-        return Ok(());
-    }
     let proxy_url = build_proxy_url(cfg);
-    info!("DoH client: proxy={}", proxy_url);
+    info!("DoH client: kind={:?}, upstream={}:{}", cfg.kind, cfg.host, cfg.port);
 
     let proxy = reqwest::Proxy::all(&proxy_url).map_err(Tun2SocksError::HttpClient)?;
 
     let http_client = reqwest::Client::builder()
         .proxy(proxy)
         .timeout(std::time::Duration::from_secs(DOH_TIMEOUT_SECS))
-        .danger_accept_invalid_certs(true)
         .build()
         .map_err(Tun2SocksError::HttpClient)?;
 
-    // Ignore the Err result: a race where another thread initialised first is
-    // fine because the configuration is identical for the runtime's lifetime.
-    let _ = DOH_CLIENT.set(DohClient {
+    *DOH_CLIENT.write() = Some(Arc::new(DohClient {
         http_client,
         doh_urls: IP_BASED_DOH_URLS.iter().map(|s| s.to_string()).collect(),
-    });
+    }));
     Ok(())
 }
 
@@ -69,7 +66,7 @@ fn build_proxy_url(cfg: &UpstreamConfig) -> String {
 }
 
 pub async fn resolve_via_doh(query: &[u8]) -> Option<Vec<u8>> {
-    let client = DOH_CLIENT.get()?;
+    let client = DOH_CLIENT.read().clone()?;
 
     for url in &client.doh_urls {
         match client

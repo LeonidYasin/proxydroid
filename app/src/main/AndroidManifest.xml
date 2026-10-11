@@ -2,6 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.VIBRATE" />
@@ -15,29 +16,71 @@
     <!-- Needed so the app can be re-armed after a device reboot. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <!-- One APK supports phones and TV; neither TV nor touch is required. -->
+    <uses-feature android:name="android.software.leanback" android:required="false" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+
+    <queries>
+        <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.HOME" /></intent>
+        <package android:name="com.google.android.youtube.tv" />
+        <package android:name="com.google.android.youtube" />
+        <intent><action android:name="android.intent.action.VIEW" /><data android:scheme="https" /></intent>
+        <intent><action android:name="android.intent.action.VIEW" /><data android:scheme="content" android:mimeType="application/vnd.android.package-archive" /></intent>
+        <intent><action android:name="android.intent.action.INSTALL_PACKAGE" /><data android:scheme="content" android:mimeType="application/vnd.android.package-archive" /></intent>
+    </queries>
+
     <application
         android:name=".ProxyDroidApplication"
-        android:icon="@drawable/ic_launcher"
-        android:label="@string/app_name"
+        android:allowBackup="false"
+        android:icon="@mipmap/locproxy_launcher"
+        android:roundIcon="@mipmap/locproxy_launcher"
+        android:banner="@drawable/locproxy_tv_banner"
+        android:label="LocProxyTV"
         android:theme="@style/Theme.ProxyDroid"
         android:usesCleartextTraffic="true">
 
         <activity
             android:name="ProxyDroid"
-            android:label="@string/app_name"
+            android:icon="@mipmap/locproxy_launcher"
+            android:banner="@drawable/locproxy_tv_banner"
+            android:label="LocProxyTV"
             android:theme="@style/Theme.ProxyDroid"
+            android:exported="true">
+        </activity>
+        <!-- Fresh launcher identity for OEM launchers that retain the old
+             Activity name/label. Keep the original component callable for
+             existing favourites, notifications, consent and restart intents.
+             Package, signer, data and VPN identity stay unchanged. -->
+        <activity-alias
+            android:name=".LocProxyTV"
+            android:targetActivity="ProxyDroid"
+            android:icon="@mipmap/locproxy_launcher"
+            android:label="LocProxyTV"
+            android:enabled="true"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
-        </activity>
+        </activity-alias>
+        <activity android:name=".RestartActivity" android:process=":restart"
+            android:exported="false" android:excludeFromRecents="true" />
         <activity
             android:name=".AppManager"
-            android:label="@string/app_name" />
+            android:label="LocProxyTV" />
         <activity
             android:name=".BypassListActivity"
-            android:label="@string/app_name" />
+            android:label="LocProxyTV" />
+
+        <provider
+            android:name=".update.UpdateFileProvider"
+            android:authorities="${applicationId}.update-files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/update_file_paths" />
+        </provider>
 
         <service
             android:name=".ProxyDroidVpnService"
@@ -56,16 +99,14 @@
                 android:value="true" />
         </service>
 
-        <!-- Re-arms the proxy on device boot when the active profile has
-             "auto-connect" enabled. Without this receiver registered here,
-             the boot flow never reaches ProxyDroidReceiver.onReceive(). -->
+        <!-- User-enabled Start on boot. Credential-encrypted settings are
+             read only after unlock; this is NOT Wi-Fi auto-connect. -->
         <receiver
             android:name=".ProxyDroidReceiver"
             android:enabled="true"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
                 <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />

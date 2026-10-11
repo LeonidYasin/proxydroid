@@ -35,6 +35,20 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 object Utils {
     private const val TAG = "ProxyDroid"
+    private val vpnEvents = java.util.ArrayDeque<String>()
+    @Synchronized fun recordVpnEvent(event: String) {
+        if (vpnEvents.size >= 24) vpnEvents.removeFirst()
+        vpnEvents.addLast("${System.currentTimeMillis()}: $event")
+    }
+    @Synchronized fun vpnHistory(): List<String> = vpnEvents.toList()
+
+    private val _activeRouting = MutableStateFlow<ActiveRouting?>(null)
+    val activeRouting: StateFlow<ActiveRouting?> = _activeRouting.asStateFlow()
+    fun setActiveRouting(routing: ActiveRouting?) { _activeRouting.value = routing }
+
+    private val _activeUpstream = MutableStateFlow<ProxyEndpoint?>(null)
+    val activeUpstream: StateFlow<ProxyEndpoint?> = _activeUpstream.asStateFlow()
+    fun setActiveUpstream(endpoint: ProxyEndpoint?) { _activeUpstream.value = endpoint }
 
     private val _working = MutableStateFlow(false)
     val working: StateFlow<Boolean> = _working.asStateFlow()
@@ -56,6 +70,7 @@ object Utils {
     @JvmStatic
     fun setWorking(working: Boolean) {
         _working.value = working
+        if (!working) { _activeUpstream.value = null; _activeRouting.value = null }
     }
 
     @JvmStatic

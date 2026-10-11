@@ -1,0 +1,5 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:label="LocProxyTV Release Smoke (CI only)" />
+    <instrumentation android:name="androidx.test.runner.AndroidJUnitRunner"
+        android:targetPackage="org.proxydroid" android:functionalTest="true" />
+</manifest>

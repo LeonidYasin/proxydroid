@@ -1,27 +1,88 @@
-name: Release APK
+name: LocProxyTV Android TV/Phone Signed Release
+run-name: >-
+  LocProxyTV · Android TV/Phone · universal + ARM32 (armeabi-v7a) · ${{ inputs.mode == 'backup' && 'encrypted backup' || 'signed release' }} · ${{ inputs.tag || github.ref_name }} · run ${{ github.run_id }} · attempt ${{ github.run_attempt }} · ${{ github.sha }}
 
-# Автовыкладка debug APK в GitHub Release.
-# Триггер: push тега v* (напр. v0.1.0-demo) или ручной запуск.
+# Signed release only. Manual dispatch without a tag builds an artifact, not a release.
 on:
-  push:
-    tags:
-      - 'v*'
-  workflow_dispatch:
+  workflow_call:
     inputs:
-      tag:
-        description: 'Тег релиза (напр. v0.1.0-demo). Пусто — только собрать APK.'
+      source_ref:
+        type: string
         required: false
         default: ''
+      tag:
+        type: string
+        required: false
+        default: ''
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Build signed APK or export an encrypted offline signing backup'
+        type: choice
+        options: [build, backup]
+        default: build
+      tag:
+        description: 'Existing version tag to publish. Empty = build artifact only.'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: write
 
+concurrency:
+  group: signed-release-${{ github.ref }}-${{ inputs.mode || 'build' }}
+  cancel-in-progress: false
+
 jobs:
   build-and-release:
+    if: inputs.mode != 'backup'
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        ref: ${{ inputs.source_ref || github.ref }}
+
+    - name: Validate signing configuration and release tag
+      id: release
+      env:
+        ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        EXPECTED_SIGNING_SHA256: ${{ vars.ANDROID_SIGNING_CERT_SHA256 || secrets.ANDROID_SIGNING_CERT_SHA256 }}
+        INPUT_TAG: ${{ inputs.tag }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD EXPECTED_SIGNING_SHA256; do
+          if [[ -z "${!name}" ]]; then
+            echo "::error::Missing $name. Configure the persistent release keystore and certificate fingerprint; debug signing is not allowed."
+            exit 1
+          fi
+        done
+        fingerprint=$(printf '%s' "$EXPECTED_SIGNING_SHA256" | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')
+        [[ "$fingerprint" =~ ^[0-9a-f]{64}$ ]] || { echo '::error::Invalid signing certificate SHA-256'; exit 1; }
+        pinned=$(tr -d ':[:space:]' < signing-certificate.sha256)
+        [[ "$fingerprint" == "$pinned" ]] || { echo '::error::Signing fingerprint differs from reviewed repository pin'; exit 1; }
+        python3 -m unittest discover -s scripts -p test_build_metadata.py
+        python3 scripts/build_metadata.py --variant release --abi universal --output build-info.json --github-output "$GITHUB_OUTPUT"
+        python3 scripts/build_metadata.py --variant release --abi armeabi-v7a --output build-info-armv7.json
+        echo "arm_name=$(python3 -c 'import json; print(json.load(open("build-info-armv7.json"))["stem"])')" >> "$GITHUB_OUTPUT"
+        VERSION=$(python3 -c 'import json; print(json.load(open("build-info.json"))["version"])')
+        BUILD_SHA=$(git rev-parse HEAD)
+        TAG="$INPUT_TAG"
+        if [[ "$GITHUB_EVENT_NAME" == push ]]; then TAG="$GITHUB_REF_NAME"; fi
+        if [[ -n "$TAG" ]]; then
+          [[ "$TAG" == "v$VERSION" || "$TAG" == "v$VERSION-"* ]] || { echo '::error::Tag does not match version.properties'; exit 1; }
+          [[ "$(git rev-parse "refs/tags/$TAG^{commit}")" == "$BUILD_SHA" ]] || { echo '::error::Tag does not point at this build commit'; exit 1; }
+        fi
+        echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
     - name: Set up JDK 17
       uses: actions/setup-java@v4
@@ -57,7 +118,7 @@ jobs:
     - name: Install NDK and CMake
       run: |
         yes | sdkmanager --licenses > /dev/null || true
-        sdkmanager --install "ndk;25.1.8937393" "cmake;3.22.1"
+        sdkmanager --install "platforms;android-36" "build-tools;34.0.0" "ndk;25.1.8937393" "cmake;3.22.1"
         echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.1.8937393" >> $GITHUB_ENV
         echo "NDK_HOME=$ANDROID_HOME/ndk/25.1.8937393" >> $GITHUB_ENV
 
@@ -95,37 +156,218 @@ jobs:
         echo "sdk.dir=$ANDROID_HOME" > local.properties
         echo "ndk.dir=$ANDROID_NDK_HOME" >> local.properties
 
-    - name: Build Debug APK
-      run: ./gradlew assembleDebug --stacktrace
+    - name: Restore private signing keystore
+      env:
+        ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        umask 077
+        printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/proxydroid-release.keystore"
+        test -s "$RUNNER_TEMP/proxydroid-release.keystore"
 
-    - name: Upload Debug APK (artifact)
+    - name: Test and build signed Release APK
+      env:
+        BUILD_SHA: ${{ steps.release.outputs.sha }}
+        KEYSTORE_PATH: ${{ runner.temp }}/proxydroid-release.keystore
+        KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      run: |
+        python3 scripts/check_tv_contract.py
+        ./gradlew testReleaseUnitTest --no-daemon
+        ./gradlew assembleRelease --no-daemon --stacktrace
+
+    - name: Verify signature, certificate, non-debuggable flag and alignment
+      env:
+        EXPECTED_SIGNING_SHA256: ${{ vars.ANDROID_SIGNING_CERT_SHA256 || secrets.ANDROID_SIGNING_CERT_SHA256 }}
+        APK_NAME: ${{ steps.release.outputs.name }}
+        BUILD_SHA: ${{ steps.release.outputs.sha }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        TOOLS="$ANDROID_HOME/build-tools/34.0.0"
+        mkdir -p dist
+        expected=$(printf '%s' "$EXPECTED_SIGNING_SHA256" | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')
+        for abi in universal armeabi-v7a; do
+          APK="app/build/outputs/apk/release/app-$abi-release.apk"
+          METADATA=build-info.json
+          if [[ "$abi" == armeabi-v7a ]]; then METADATA=build-info-armv7.json; fi
+          NAME=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["stem"])' "$METADATA")
+          "$TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee "dist/$NAME.signing.txt"
+          actual=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "dist/$NAME.signing.txt" | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')
+          [[ "$actual" == "$expected" ]] || { echo '::error::Wrong signing certificate'; exit 1; }
+          if grep -Eq 'Signer #1 certificate DN:.*CN=Android Debug' "dist/$NAME.signing.txt"; then
+            echo '::error::Android debug certificate is not a release identity'; exit 1
+          fi
+          "$TOOLS/zipalign" -c -v 4 "$APK"
+          "$TOOLS/aapt" dump badging "$APK" > "dist/$NAME.manifest.txt"
+          if grep -q '^application-debuggable' "dist/$NAME.manifest.txt"; then
+            echo '::error::Release APK is debuggable'; exit 1
+          fi
+          python3 scripts/build_metadata.py --apk "$APK" --metadata "$METADATA" --dist dist --badging "dist/$NAME.manifest.txt"
+          (cd dist && sha256sum -c "$NAME.apk.sha256")
+        done
+        python3 - <<'PYSIZE'
+        import json, zipfile
+        from pathlib import Path
+        assert Path("app/build/outputs/mapping/release/mapping.txt").is_file(), "R8 mapping missing"
+        for apk in Path("dist").glob("*.apk"):
+            with zipfile.ZipFile(apk) as z:
+                assert not any(n.startswith(("assets/armeabi-v7a/", "assets/x86/")) for n in z.namelist()), "Legacy executable assets packaged"
+        builds = [json.loads(p.read_text()) for p in Path('dist').glob('*.build-info.json')]
+        uni = next(x for x in builds if x['abi_variant'] == 'universal')
+        arm = next(x for x in builds if x['abi_variant'] == 'armeabi-v7a')
+        assert arm['apk_bytes'] < uni['apk_bytes'], 'ARM32 package must be smaller than universal'
+        assert arm['commit'] == uni['commit'] and arm['version_code'] == uni['version_code']
+        print('Verified separate compact ARM32 and universal packages with identical source/version identity.')
+        PYSIZE
+
+    - name: Upload verified signed universal Release APK
       uses: actions/upload-artifact@v4
       with:
-        name: app-debug-release
-        path: app/build/outputs/apk/debug/app-debug.apk
+        name: ${{ steps.release.outputs.name }}
+        path: dist/${{ steps.release.outputs.name }}.*
+        if-no-files-found: error
         retention-days: 30
 
-    - name: Determine release tag
-      id: tag
-      run: |
-        if [ "${{ github.event_name }}" = "push" ]; then
-          echo "tag=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
-        else
-          echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
-        fi
+    - name: Upload verified signed ARM32 Release APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.release.outputs.arm_name }}
+        path: dist/${{ steps.release.outputs.arm_name }}.*
+        if-no-files-found: error
+        retention-days: 30
 
-    - name: Publish APK to GitHub Release
-      if: steps.tag.outputs.tag != ''
+    - name: Enable KVM for optimized release smoke tests
+      run: |
+        echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+        sudo udevadm control --reload-rules
+        sudo udevadm trigger --name-match=kvm
+
+    - name: Test signed minified release on Android 11
+      uses: reactivecircus/android-emulator-runner@v2
+      env:
+        BUILD_SHA: ${{ steps.release.outputs.sha }}
+        KEYSTORE_PATH: ${{ runner.temp }}/proxydroid-release.keystore
+        KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      with:
+        api-level: 30
+        target: google_apis
+        arch: x86_64
+        disable-animations: true
+        emulator-boot-timeout: 300
+        script: bash scripts/run_release_smoke.sh
+
+    - name: Require successful Android and instrumented checks before publishing
+      if: steps.release.outputs.tag != ''
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        BUILD_SHA: ${{ steps.release.outputs.sha }}
+      shell: bash
       run: |
-        TAG="${{ steps.tag.outputs.tag }}"
-        if ! gh release view "$TAG" >/dev/null 2>&1; then
-          gh release create "$TAG" \
-            --title "proxydroid $TAG" \
-            --notes "Авто-релиз APK из commit ${GITHUB_SHA}." \
-            --prerelease
+        set -euo pipefail
+        for attempt in $(seq 1 60); do
+          result=$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/android-build.yml/runs" \
+            -f head_sha="$BUILD_SHA" -f per_page=20 \
+            --jq '.workflow_runs | sort_by(.created_at) | reverse | .[0] | {id, status, conclusion}')
+          status=$(jq -r '.status // "not-found"' <<< "$result")
+          conclusion=$(jq -r '.conclusion // "pending"' <<< "$result")
+          if [[ "$status" == completed ]]; then
+            [[ "$conclusion" == success ]] || { echo "::error::Android checks failed: $conclusion. Release will not be published."; exit 1; }
+            echo "Android build, unit tests and blocking emulator tests passed for $BUILD_SHA"
+            break
+          fi
+          if [[ "$attempt" == 60 ]]; then
+            echo '::error::No successful Android check run within 20 minutes. Refusing publication.'; exit 1
+          fi
+          echo "Waiting for Android checks ($status), attempt $attempt/60"
+          sleep 20
+        done
+
+    - name: Publish signed APK to GitHub Release
+      if: steps.release.outputs.tag != ''
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        RELEASE_TITLE: ${{ steps.release.outputs.release_title }}
+        TAG: ${{ steps.release.outputs.tag }}
+        APK_NAME: ${{ steps.release.outputs.name }}
+        BUILD_SHA: ${{ steps.release.outputs.sha }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        if gh release view "$TAG" >/dev/null 2>&1; then
+          echo '::error::Release already exists. Do not change a published build identity or overwrite its files.'
+          exit 1
         fi
-        gh release upload "$TAG" \
-          app/build/outputs/apk/debug/app-debug.apk#app-debug.apk \
-          --clobber
+        flags=()
+        if [[ "$TAG" == *-* ]]; then flags+=(--prerelease); fi
+        python3 - <<'PYNOTES'
+        import json
+        from pathlib import Path
+        records = sorted((json.loads(p.read_text()) for p in Path('dist').glob('*.build-info.json')), key=lambda x: x['abi_variant'])
+        notes = ['## Signed Android TV / Phone APKs', '']
+        for record in records:
+            notes += [f"### {record['abi_variant']}", f"- File: `{record['apk_filename']}`", f"- Bytes: {record['apk_bytes']}", f"- SHA-256: `{record['apk_sha256']}`", '']
+        uni = next(x for x in records if x['abi_variant'] == 'universal')
+        notes += [(Path('dist') / (uni['stem'] + '.release-notes.md')).read_text()]
+        Path('dist/release-notes.md').write_text('\n'.join(notes))
+        PYNOTES
+        RELEASE_TITLE="${RELEASE_TITLE/· universal ·/· universal + ARM32 (armeabi-v7a) ·}"
+        gh release create "$TAG" --verify-tag --target "$BUILD_SHA" --draft --title "$RELEASE_TITLE" \
+          --notes-file dist/release-notes.md "${flags[@]}" \
+          dist/*.apk dist/*.apk.sha256 dist/*.signing.txt dist/*.build-info.json dist/*.build-info.txt
+        # Publish only after all correctly named assets have uploaded.
+        gh release edit "$TAG" --draft=false
+
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: release-unit-test-results
+        path: |
+          app/build/reports/tests/
+          app/build/test-results/
+          app/build/reports/androidTests/
+          app/build/reports/release-smoke/
+          app/build/outputs/androidTest-results/
+          app/build/outputs/mapping/release/
+        if-no-files-found: ignore
+
+    - name: Delete private signing keystore
+      if: always()
+      shell: bash
+      run: rm -f "$RUNNER_TEMP/proxydroid-release.keystore"
+
+  encrypted-signing-backup:
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'backup'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+      - name: Encrypt and verify offline signing backup
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          PROXYDROID_BACKUP_PASSWORD: ${{ secrets.PROXYDROID_BACKUP_PASSWORD }}
+        run: python3 scripts/create_signing_backup.py
+      - name: Upload encrypted backup only
+        uses: actions/upload-artifact@v4
+        with:
+          name: ProxyDroid-encrypted-signing-backup
+          path: encrypted-signing-backup/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Remove temporary encrypted output
+        if: always()
+        run: rm -rf encrypted-signing-backup

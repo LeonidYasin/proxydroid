@@ -19,7 +19,14 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import org.proxydroid.ui.ConnectionDiagnosticDialog
+import org.proxydroid.ui.AppUpdateDialog
+import org.proxydroid.update.UpdateViewModel
 import org.proxydroid.ui.MainScreen
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.launch
 import org.proxydroid.ui.MainViewModel
 import org.proxydroid.ui.theme.ProxyDroidTheme
 import org.proxydroid.utils.ProxyController
@@ -28,6 +35,9 @@ import org.proxydroid.utils.Utils
 class ProxyDroid : ComponentActivity() {
 
     private val viewModel: MainViewModel by viewModels()
+    private val updates: UpdateViewModel by viewModels()
+    private var recoveryVisible by androidx.compose.runtime.mutableStateOf(false)
+    private var recoveryBusy by androidx.compose.runtime.mutableStateOf(false)
 
     private val vpnConsentLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -35,7 +45,7 @@ class ProxyDroid : ComponentActivity() {
         if (result.resultCode == RESULT_OK) {
             val extras = ProxyController.buildExtras(viewModel.state.value.profile)
             Utils.setLastError(null)
-            startService(
+            androidx.core.content.ContextCompat.startForegroundService(this,
                 Intent(this, ProxyDroidVpnService::class.java).putExtras(extras)
             )
         }
@@ -47,6 +57,7 @@ class ProxyDroid : ComponentActivity() {
         setContent {
             ProxyDroidTheme {
                 val state by viewModel.state.collectAsState()
+                val updateState by updates.state.collectAsState()
                 MainScreen(
                     state = state,
                     onToggle = { wantOn ->
@@ -59,7 +70,29 @@ class ProxyDroid : ComponentActivity() {
                     onDeleteProfile = viewModel::deleteCurrent,
                     onToggleAdvanced = viewModel::toggleAdvanced,
                     onCheckAlive = viewModel::checkAlive,
+                    onGatewayChange = viewModel::setUseGatewayAsHost,
+                    onOpenUpdates = updates::open,
+                    onOpenYouTube = { if (!org.proxydroid.utils.YouTubeLauncher.open(this)) viewModel.reportConnectionError("YouTube/browser is not installed") },
+                    onRunDiagnostics = { viewModel.checkDiagnostics() },
+                    onCheckYouTube = viewModel::checkYouTube,
+                    onShowDiagnostics = viewModel::showDiagnostics,
+                    onRecovery = { recoveryVisible = true },
                 )
+                if (recoveryVisible) org.proxydroid.ui.RecoveryDialog(recoveryBusy, ::recover,
+                    { openSystemSettings(android.provider.Settings.ACTION_VPN_SETTINGS) },
+                    { openSystemSettings(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS) },
+                    { if (!recoveryBusy) recoveryVisible = false })
+                ConnectionDiagnosticDialog(state, viewModel::cancelDiagnostics, viewModel::dismissDiagnostics)
+                AppUpdateDialog(updateState, updates::selectChannel, updates::check,
+                    updates::download, { updates.install(this) }, updates::dismiss)
+            }
+        }
+
+        lifecycleScope.launch {
+            repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
+                updates.state.collect { update ->
+                    if (update.visible && update.pendingInstall && !update.installing) updates.install(this@ProxyDroid)
+                }
             }
         }
 
@@ -81,6 +114,7 @@ class ProxyDroid : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         viewModel.reload()
+        updates.onResume(this)
     }
 
     private fun startVpn() {
@@ -90,9 +124,46 @@ class ProxyDroid : ComponentActivity() {
         } else {
             val extras = ProxyController.buildExtras(viewModel.state.value.profile)
             Utils.setLastError(null)
-            startService(
+            androidx.core.content.ContextCompat.startForegroundService(this,
                 Intent(this, ProxyDroidVpnService::class.java).putExtras(extras)
             )
+        }
+    }
+
+    private fun openSystemSettings(action: String) {
+        val intent = Intent(action)
+        if (action == android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+            intent.data = android.net.Uri.parse("package:$packageName")
+        try { startActivity(intent) }
+        catch (_: Exception) { viewModel.reportConnectionError("Системный экран недоступен на этой прошивке. Откройте настройки приставки вручную.") }
+    }
+
+    private fun recover(action: org.proxydroid.ui.RecoveryAction) {
+        if (recoveryBusy) return
+        recoveryBusy = true
+        viewModel.prepareRecovery(); updates.dismiss()
+        @Suppress("DEPRECATION")
+        android.preference.PreferenceManager.getDefaultSharedPreferences(this).edit().commit()
+        lifecycleScope.launch {
+            val stopped = org.proxydroid.utils.VpnRecovery.stopAndAwait(this@ProxyDroid)
+            recoveryBusy = false; recoveryVisible = false
+            viewModel.finishRecovery()
+            if (!stopped) {
+                viewModel.reportConnectionError("Остановка не подтверждена: перезапуск/переподключение не выполнены. Повторите Stop или используйте системный Force stop.")
+                return@launch
+            }
+            when (action) {
+                org.proxydroid.ui.RecoveryAction.RECONNECT -> startVpn()
+                org.proxydroid.ui.RecoveryAction.STOP_VPN -> Unit
+                org.proxydroid.ui.RecoveryAction.RESTART_APP -> {
+                    startActivity(Intent(this@ProxyDroid, RestartActivity::class.java)
+                        .putExtra("old_pid", android.os.Process.myPid())
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
+                }
+                org.proxydroid.ui.RecoveryAction.EXIT_APP -> {
+                    finishAffinity(); android.os.Process.killProcess(android.os.Process.myPid())
+                }
+            }
         }
     }
 

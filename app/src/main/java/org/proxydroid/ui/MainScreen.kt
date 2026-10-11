@@ -2,10 +2,20 @@ package org.proxydroid.ui
 
 import android.content.Intent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.foundation.background
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -48,8 +58,9 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LargeTopAppBar
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -57,7 +68,13 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberTopAppBarState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.input.InputMode
+import androidx.compose.ui.platform.LocalInputModeManager
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.testTag
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -66,7 +83,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -79,7 +95,7 @@ import org.proxydroid.R
 
 private val PROXY_TYPES = listOf("socks5", "socks4", "http", "https")
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun MainScreen(
     state: MainUiState,
@@ -91,31 +107,38 @@ fun MainScreen(
     onDeleteProfile: () -> Unit,
     onToggleAdvanced: () -> Unit,
     onCheckAlive: () -> Unit,
+    onGatewayChange: (Boolean) -> Unit,
+    onOpenUpdates: () -> Unit,
+    onOpenYouTube: () -> Unit = {},
+    onRunDiagnostics: () -> Unit = {},
+    onCheckYouTube: () -> Unit = {},
+    onShowDiagnostics: () -> Unit = {},
+    onRecovery: () -> Unit = {},
 ) {
     val scroll = rememberScrollState()
-    val topBarState = rememberTopAppBarState()
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(topBarState)
     var menuOpen by remember { mutableStateOf(false) }
     var showRename by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    val connectionFocus = remember { FocusRequester() }
 
     Scaffold(
-        modifier = Modifier
-            .fillMaxSize()
-            .nestedScroll(scrollBehavior.nestedScrollConnection),
+        modifier = Modifier.fillMaxSize(),
         topBar = {
-            LargeTopAppBar(
+            TopAppBar(
+                modifier = Modifier.testTag("app-top-bar"),
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
                 title = {
                     Column {
-                        Text(stringRes(R.string.app_name))
+                        Text(stringRes(R.string.app_name), maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(
-                            text = "v${BuildConfig.VERSION_NAME} · ${BuildConfig.BUILD_SHA.take(8)}",
+                            text = buildIdentityText(),
                             style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
                         )
                     }
                 },
                 actions = {
-                    IconButton(onClick = { menuOpen = true }) {
+                    IconButton(onClick = { menuOpen = true }, modifier = Modifier.tvRemoteFocus()) {
                         Icon(Icons.Default.MoreVert, contentDescription = "More")
                     }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
@@ -129,13 +152,19 @@ fun MainScreen(
                             onClick = { menuOpen = false; showDeleteConfirm = true },
                             leadingIcon = { Icon(Icons.Default.Delete, null) },
                         )
+                        DropdownMenuItem(text = { Text("Восстановление / перезапуск") },
+                            onClick = { menuOpen = false; onRecovery() })
                         Divider()
+                        DropdownMenuItem(
+                            text = { Text("Update app") },
+                            onClick = { menuOpen = false; onOpenUpdates() },
+                        )
                         DropdownMenuItem(
                             text = {
                                 Column {
                                     Text("About")
                                     Text(
-                                        text = "v${BuildConfig.VERSION_NAME} · ${BuildConfig.BUILD_SHA.take(8)}",
+                                        text = buildIdentityText(),
                                         style = MaterialTheme.typography.bodySmall,
                                     )
                                 }
@@ -145,30 +174,37 @@ fun MainScreen(
                         )
                     }
                 },
-                scrollBehavior = scrollBehavior,
             )
         },
     ) { padding ->
         Column(
             modifier = Modifier
                 .padding(padding)
-                .padding(horizontal = 16.dp)
-                .verticalScroll(scroll),
+                .consumeWindowInsets(padding)
+                .fillMaxSize()
+                .clipToBounds()
+                .testTag("main-scroll")
+                .verticalScroll(scroll)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            ConnectionCard(state = state, onToggle = onToggle, onCheckAlive = onCheckAlive)
+            ConnectionCard(state = state, onToggle = onToggle, onCheckAlive = onCheckAlive, focusRequester = connectionFocus, onOpenYouTube = onOpenYouTube, onDiagnostics = onRunDiagnostics)
+            ConnectionDiagnostics(state, onRunDiagnostics, onCheckYouTube, onShowDiagnostics)
+            AutoGatewayCard(
+                enabled = state.profile.useGatewayAsHost,
+                onChange = onGatewayChange,
+                gatewayIp = state.gatewayIp,
+            )
+            ProxyEndpointCard(profile = state.profile, edit = onProfileEdit)
             ProfileCard(
                 state = state,
                 onSelectProfile = onSelectProfile,
                 onNewProfile = onNewProfile,
             )
             ProxyForm(profile = state.profile, edit = onProfileEdit)
-            AutoGatewayCard(
-                enabled = state.profile.useGatewayAsHost,
-                onChange = { onProfileEdit { useGatewayAsHost = it } },
-            )
             AutoStartOnBootCard(
                 enabled = state.profile.autoStartOnBoot,
+                status = state.bootStatus,
                 onChange = { onProfileEdit { autoStartOnBoot = it } },
             )
             AdvancedSection(
@@ -199,12 +235,28 @@ fun MainScreen(
     }
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun ConnectionCard(
     state: MainUiState,
     onToggle: (Boolean) -> Unit,
     onCheckAlive: () -> Unit,
+    focusRequester: FocusRequester,
+    onOpenYouTube: () -> Unit,
+    onDiagnostics: () -> Unit,
 ) {
+    // Request inside Scaffold's subcomposition, after the target exists.
+    val inputMode = LocalInputModeManager.current
+    var initialFocusSet by remember { mutableStateOf(false) }
+    LaunchedEffect(state.isConnecting) {
+        if (!initialFocusSet && !state.isConnecting && !(state.isWorking && state.internetAvailable == true && !state.internetChecking)) {
+            // Foundation switches/buttons reject focus in touch mode. Enter
+            // DPAD/keyboard mode before assigning the initial remote focus.
+            inputMode.requestInputMode(InputMode.Keyboard)
+            focusRequester.requestFocus()
+            initialFocusSet = true
+        }
+    }
     val on = state.isWorking
     val tone = if (on) MaterialTheme.colorScheme.primaryContainer
     else MaterialTheme.colorScheme.surfaceVariant
@@ -213,50 +265,79 @@ private fun ConnectionCard(
 
     Card(
         colors = CardDefaults.cardColors(containerColor = tone, contentColor = onTone),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().testTag("connection-card"),
     ) {
         Row(
-            modifier = Modifier
-                .padding(20.dp)
-                .fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 84.dp)
+                .focusRequester(focusRequester)
+                .tvRemoteFocus().testTag("connection-row")
+                .toggleable(value = on, enabled = !state.isConnecting,
+                    role = Role.Switch, onValueChange = onToggle)
+                .padding(20.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                modifier = Modifier
-                    .size(14.dp)
-                    .background(
-                        if (on) Color(0xFF2BAA63) else Color(0xFF9E9E9E),
-                        CircleShape,
-                    ),
-            )
+            Box(Modifier.size(14.dp).background(
+                if (on) Color(0xFF2BAA63) else MaterialTheme.colorScheme.outline,
+                CircleShape))
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Text(
-                    if (on) "Connected" else "Disconnected",
+                Text(if (on) "Connected" else "Disconnected",
                     style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    secondaryStatus(state),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                // Liveness indicator: only meaningful while the tunnel is up.
-                if (on) {
-                    Spacer(Modifier.height(4.dp))
-                    LivenessIndicator(state = state, onCheckAlive = onCheckAlive)
+                    fontWeight = FontWeight.SemiBold)
+                Text(secondaryStatus(state), style = MaterialTheme.typography.bodyMedium)
+                if (!on) state.lastError?.let { error ->
+                    Text(error, style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error)
                 }
             }
-            if (state.isConnecting) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(28.dp),
-                    strokeWidth = 3.dp,
-                )
-            } else {
-                Switch(
-                    checked = on,
-                    onCheckedChange = onToggle,
-                )
+            if (state.isConnecting) CircularProgressIndicator(
+                modifier = Modifier.size(28.dp), strokeWidth = 3.dp)
+            // Passive visual indicator: the entire row is the only toggle/focus
+            // target. This prevents clipped labels when returning with DPAD.
+            Switch(checked = on, onCheckedChange = null, enabled = !state.isConnecting,
+                modifier = Modifier.testTag("connection-toggle"))
+        }
+        if (on) Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 16.dp)) {
+            LivenessIndicator(state, onCheckAlive)
+            InternetActions(state, onOpenYouTube, onDiagnostics)
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
+@Composable
+internal fun InternetActions(state: MainUiState, onOpenYouTube: () -> Unit, onRetry: () -> Unit) {
+    val youtubeFocus = remember { FocusRequester() }
+    val youtubeView = remember { BringIntoViewRequester() }
+    val inputMode = LocalInputModeManager.current
+    var focusedThisConnection by remember { mutableStateOf(false) }
+    LaunchedEffect(state.isWorking) {
+        if (!state.isWorking) focusedThisConnection = false
+    }
+    if (!state.isWorking) return
+    when {
+        state.internetChecking -> Text("Checking internet through proxy…", style = MaterialTheme.typography.bodySmall)
+        state.internetAvailable == true -> {
+            Text("HTTPS test succeeded through proxy — not a full VPN or video test", style = MaterialTheme.typography.bodySmall)
+            TextButton(onClick = onOpenYouTube, modifier = Modifier
+                .tvRemoteFocus().bringIntoViewRequester(youtubeView)
+                .focusRequester(youtubeFocus).testTag("open-youtube")) { Text("Open YouTube") }
+            // First verified success per connection: show the action and hand off
+            // the remote focus. Retry/poll updates must not repeatedly steal it.
+            LaunchedEffect(Unit) {
+                if (!focusedThisConnection) {
+                    inputMode.requestInputMode(InputMode.Keyboard)
+                    withFrameNanos { } // Wait for the inserted action's layout.
+                    youtubeView.bringIntoView()
+                    youtubeFocus.requestFocus()
+                    focusedThisConnection = true
+                }
             }
+        }
+        state.internetAvailable == false -> {
+            Text("Internet through proxy could not be verified", color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall)
+            TextButton(onClick = onRetry, modifier = Modifier.tvRemoteFocus()) { Text("Retry internet check") }
         }
     }
 }
@@ -273,8 +354,8 @@ private fun ConnectionCard(
 @Composable
 private fun LivenessIndicator(state: MainUiState, onCheckAlive: () -> Unit) {
     val (dotColor, label) = when (state.isAlive) {
-        true -> Color(0xFF2BAA63) to "Proxy alive"
-        false -> Color(0xFFE53935) to "Proxy not responding"
+        true -> Color(0xFF2BAA63) to "TCP port reachable — forwarding/internet not proven"
+        false -> MaterialTheme.colorScheme.error to "TCP port unreachable — run detailed diagnostics"
         null -> Color(0xFF9E9E9E) to "Proxy not checked yet"
     }
     Column {
@@ -292,9 +373,10 @@ private fun LivenessIndicator(state: MainUiState, onCheckAlive: () -> Unit) {
             Spacer(Modifier.width(8.dp))
             TextButton(
                 onClick = onCheckAlive,
+                modifier = Modifier.tvRemoteFocus(),
                 contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
             ) {
-                Text("Check", style = MaterialTheme.typography.bodySmall)
+                Text("TCP check", style = MaterialTheme.typography.bodySmall)
             }
         }
         // Show the concrete reason of the last failure instead of dying
@@ -305,7 +387,7 @@ private fun LivenessIndicator(state: MainUiState, onCheckAlive: () -> Unit) {
             Text(
                 text = err,
                 style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFFE53935),
+                color = MaterialTheme.colorScheme.error,
             )
         }
     }
@@ -334,37 +416,23 @@ private fun ProfileCard(
             Text("Profile", style = MaterialTheme.typography.labelLarge)
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                ExposedDropdownMenuBox(
-                    expanded = expanded,
-                    onExpandedChange = { expanded = !expanded },
-                    modifier = Modifier.weight(1f),
-                ) {
-                    OutlinedTextField(
-                        value = current.name,
-                        onValueChange = {},
-                        readOnly = true,
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
-                        modifier = Modifier
-                            .menuAnchor()
-                            .fillMaxWidth(),
-                    )
-                    DropdownMenu(
-                        expanded = expanded,
-                        onDismissRequest = { expanded = false },
-                    ) {
+                Box(Modifier.weight(1f)) {
+                    OutlinedButton(onClick = { expanded = !expanded },
+                        modifier = Modifier.fillMaxWidth().tvRemoteFocus().testTag("select-profile")) {
+                        Text(current.name, modifier = Modifier.weight(1f), maxLines = 1,
+                            overflow = TextOverflow.Ellipsis)
+                        Icon(Icons.Default.ExpandMore, contentDescription = "Select profile")
+                    }
+                    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                         state.profiles.forEach { p ->
                             DropdownMenuItem(
-                                text = { Text(p.name) },
-                                onClick = {
-                                    expanded = false
-                                    onSelectProfile(p.id)
-                                },
-                            )
+                                text = { Text(p.name) }, modifier = Modifier.tvRemoteFocus(),
+                                onClick = { expanded = false; onSelectProfile(p.id) })
                         }
                     }
                 }
                 Spacer(Modifier.width(8.dp))
-                IconButton(onClick = onNewProfile) {
+                IconButton(onClick = onNewProfile, modifier = Modifier.tvRemoteFocus()) {
                     Icon(Icons.Default.Add, contentDescription = "New profile")
                 }
             }
@@ -373,13 +441,14 @@ private fun ProfileCard(
 }
 
 @Composable
-private fun AutoGatewayCard(enabled: Boolean, onChange: (Boolean) -> Unit) {
+private fun AutoGatewayCard(enabled: Boolean, onChange: (Boolean) -> Unit, gatewayIp: String?) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text("Auto gateway", style = MaterialTheme.typography.labelLarge)
+            Text("Detected gateway: ${gatewayIp ?: "not available yet"}", style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.height(8.dp))
             ToggleRow(
-                title = "Use Wi-Fi gateway as proxy host",
+                title = "Use default gateway as proxy host",
                 subtitle = "Automatically use the current network's default gateway " +
                     "(e.g. the phone's hotspot address 192.168.43.1) as the upstream " +
                     "proxy host, instead of the manually configured Host.",
@@ -391,19 +460,52 @@ private fun AutoGatewayCard(enabled: Boolean, onChange: (Boolean) -> Unit) {
 }
 
 @Composable
-private fun AutoStartOnBootCard(enabled: Boolean, onChange: (Boolean) -> Unit) {
+private fun AutoStartOnBootCard(enabled: Boolean, onChange: (Boolean) -> Unit, status: String?) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text("Startup", style = MaterialTheme.typography.labelLarge)
+            status?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             Spacer(Modifier.height(8.dp))
             ToggleRow(
                 title = "Start on boot",
-                subtitle = "Automatically re-arm the proxy after the device reboots " +
-                    "or after the app is updated. Independent of the Wi-Fi auto-connect " +
-                    "option above.",
+                subtitle = "Connect once to grant VPN consent. After boot/update, wait up to " +
+                    "120 seconds for network/proxy. OEM autostart restrictions may apply.",
                 checked = enabled,
                 onChange = onChange,
             )
+        }
+    }
+}
+
+@Composable
+private fun ProxyEndpointCard(profile: Profile, edit: (Profile.() -> Unit) -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth().testTag("proxy-endpoint")) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                EditableSettingField(
+                    value = profile.host,
+                    onValueChange = { v -> edit { host = v.trim() } },
+                    label = "Host",
+                    singleLine = true,
+                    enabled = !profile.useGatewayAsHost,
+                    modifier = Modifier.weight(2f),
+                )
+                EditableSettingField(
+                    value = if (profile.port == 0) "" else profile.port.toString(),
+                    onValueChange = { v -> edit { port = v.toInt() } },
+                    validate = { v ->
+                        if (org.proxydroid.utils.isValidProxyPort(v)) null
+                        else "Enter a port from 1 to 65535"
+                    },
+                    label = "Port",
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
         }
     }
 }
@@ -425,35 +527,12 @@ private fun ProxyForm(profile: Profile, edit: (Profile.() -> Unit) -> Unit) {
                         selected = profile.proxyType == t,
                         onClick = { edit { proxyType = t } },
                         label = { Text(t.uppercase()) },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).tvRemoteFocus(),
                     )
                 }
             }
             Spacer(Modifier.height(12.dp))
 
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                OutlinedTextField(
-                    value = profile.host,
-                    onValueChange = { v -> edit { host = v.trim() } },
-                    label = { Text("Host") },
-                    singleLine = true,
-                    enabled = !profile.useGatewayAsHost,
-                    modifier = Modifier.weight(2f),
-                )
-                OutlinedTextField(
-                    value = if (profile.port == 0) "" else profile.port.toString(),
-                    onValueChange = { v ->
-                        val n = v.filter { it.isDigit() }.take(5).toIntOrNull() ?: 0
-                        edit { port = n }
-                    },
-                    label = { Text("Port") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.weight(1f),
-                )
-            }
 
             Spacer(Modifier.height(8.dp))
             ToggleRow(
@@ -463,17 +542,17 @@ private fun ProxyForm(profile: Profile, edit: (Profile.() -> Unit) -> Unit) {
             )
             AnimatedVisibility(visible = profile.isAuth) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
+                    EditableSettingField(
                         value = profile.user,
                         onValueChange = { v -> edit { user = v } },
-                        label = { Text("Username") },
+                        label = "Username",
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    OutlinedTextField(
+                    EditableSettingField(
                         value = profile.password,
                         onValueChange = { v -> edit { password = v } },
-                        label = { Text("Password") },
+                        label = "Password",
                         singleLine = true,
                         visualTransformation = PasswordVisualTransformation(),
                         modifier = Modifier.fillMaxWidth(),
@@ -484,10 +563,10 @@ private fun ProxyForm(profile: Profile, edit: (Profile.() -> Unit) -> Unit) {
                         onChange = { edit { isNTLM = it } },
                     )
                     AnimatedVisibility(visible = profile.isNTLM) {
-                        OutlinedTextField(
+                        EditableSettingField(
                             value = profile.domain,
                             onValueChange = { v -> edit { domain = v } },
-                            label = { Text("NTLM Domain") },
+                            label = "NTLM Domain",
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
                         )
@@ -514,7 +593,7 @@ private fun AdvancedSection(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("Advanced", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                IconButton(onClick = onToggle) {
+                IconButton(onClick = onToggle, modifier = Modifier.tvRemoteFocus()) {
                     Icon(
                         if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                         contentDescription = if (expanded) "Collapse" else "Expand",
@@ -546,17 +625,17 @@ private fun AdvancedSection(
                     )
                     AnimatedVisibility(visible = profile.isAutoConnect) {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(
+                            EditableSettingField(
                                 value = profile.ssid,
                                 onValueChange = { v -> edit { ssid = v } },
-                                label = { Text("Bind SSID (comma-separated)") },
+                                label = "Bind SSID (comma-separated)",
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth(),
                             )
-                            OutlinedTextField(
+                            EditableSettingField(
                                 value = profile.excludedSsid,
                                 onValueChange = { v -> edit { excludedSsid = v } },
-                                label = { Text("Exclude SSID (comma-separated)") },
+                                label = "Exclude SSID (comma-separated)",
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth(),
                             )
@@ -596,7 +675,10 @@ private fun ToggleRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 48.dp),
+            .heightIn(min = 56.dp)
+            .tvRemoteFocus()
+            .toggleable(checked, role = Role.Switch, onValueChange = onChange)
+            .padding(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
@@ -607,7 +689,7 @@ private fun ToggleRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Switch(checked = checked, onCheckedChange = onChange)
+        Switch(checked = checked, onCheckedChange = null)
     }
 }
 
@@ -635,7 +717,7 @@ private fun LinkRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        TextButton(onClick = { ctx.startActivity(Intent(ctx, targetActivity)) }) {
+        TextButton(onClick = { ctx.startActivity(Intent(ctx, targetActivity)) }, modifier = Modifier.tvRemoteFocus()) {
             Text("Open")
         }
     }
@@ -660,8 +742,8 @@ private fun TextEditDialog(
                 modifier = Modifier.fillMaxWidth(),
             )
         },
-        confirmButton = { TextButton(onClick = { onConfirm(value) }) { Text("OK") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        confirmButton = { TextButton(onClick = { onConfirm(value) }, modifier = Modifier.tvRemoteFocus()) { Text("OK") } },
+        dismissButton = { TextButton(onClick = onDismiss, modifier = Modifier.tvRemoteFocus()) { Text("Cancel") } },
     )
 }
 
@@ -676,10 +758,16 @@ private fun ConfirmDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         confirmButton = { TextButton(onClick = onConfirm) { Text(confirmText) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss, modifier = Modifier.tvRemoteFocus()) { Text("Cancel") } },
     )
 }
 
 @Composable
 private fun stringRes(id: Int): String =
     androidx.compose.ui.res.stringResource(id = id)
+
+
+private fun buildIdentityText(): String =
+    "v${BuildConfig.VERSION_NAME} · ${BuildConfig.BUILD_TYPE} · " +
+        "build ${BuildConfig.BUILD_RUN_ID}/a${BuildConfig.BUILD_RUN_ATTEMPT} · " +
+        "g${BuildConfig.BUILD_SHA.take(12)}"

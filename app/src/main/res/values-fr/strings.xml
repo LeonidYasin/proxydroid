@@ -2,7 +2,7 @@
 <resources>
 
     <!-- app string -->
-    <string name="app_name">ProxyDroid</string>
+    <string name="app_name">LocProxyTV</string>
     <string name="ok_iknow">OK, Je sais</string>
     <string name="feedback">Commentaire @ofmax</string>
 
@@ -22,7 +22,7 @@
     <string name="service_running">Fonctionne en arrière plan</string>
     <string name="forward_success">Connecté</string>
     <string name="forward_fail">Connexion échouée</string>
-    <string name="service_stopped">Service ProxyDroid arrêté</string>
+    <string name="service_stopped">Service LocProxyTV arrêté</string>
     <string name="auto_reconnected">Reconnexion</string>
     <string name="reconnect_success">Reconnecté</string>
     <string name="already_stopped">Le service est déjà arrêté</string>
@@ -99,7 +99,7 @@
 		le support IPTABLES)</string>
     <string name="bypass_apps">Mode de Contournement</string>
     <string name="bypass_apps_summary">Activer cette option pour contourner les applications sélectionnées au lieu de les proxyfier</string>
-    <string name="proxyed_help">Selectionner les applications à utiliser avec ProxyDroid :</string>
+    <string name="proxyed_help">Selectionner les applications à utiliser avec LocProxyTV :</string>
 
     <!-- menu bar category -->
     <string name="recovery">Réinitialiser</string>
@@ -111,7 +111,7 @@
 		du projet sur
 		google code. \n\n(proxydroid.googlecode.com)</string>
     <string name="about">A propos</string>
-    <string name="about_title">ProxyDroid %s</string>
+    <string name="about_title">LocProxyTV %s</string>
     <string name="change_name">Renommer</string>
     <string name="alert_dialog_ok">OK</string>
     <string name="alert_dialog_cancel">Annuler</string>

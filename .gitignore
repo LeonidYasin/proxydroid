@@ -16,3 +16,19 @@ build/
 app/release
 __pycache__/
 *.pyc
+
+# Never commit private signing material.
+*.jks
+*.keystore
+*.p12
+*.pfx
+
+encrypted-signing-backup/
+.signing/
+github-secrets.json
+
+build-info.json
+dist/
+
+# Generated static documentation website
+_site/

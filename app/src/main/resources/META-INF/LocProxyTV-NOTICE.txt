@@ -1,0 +1,4 @@
+LocProxyTV is derived from ProxyDroid, Copyright (C) 2011 Max Lv.
+Distributed under GNU GPL version 3 or later.
+Source and full licensing information: https://github.com/LeonidYasin/proxydroid
+Third-party notices are preserved in assets/pages/about.html and repository license files.

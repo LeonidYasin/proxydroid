@@ -95,7 +95,7 @@ install_app() {
     ./gradlew assembleDebug
 
     # Install APK
-    adb install -r app/build/outputs/apk/debug/app-debug.apk
+    adb install -r app/build/outputs/apk/debug/app-universal-debug.apk
 
     log_info "App installed successfully"
 }

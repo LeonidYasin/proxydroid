@@ -127,13 +127,17 @@ pub extern "system" fn Java_org_proxydroid_utils_Tun2SocksHelper_nativeStart(
 /// function breaks the Android app.
 #[no_mangle]
 pub extern "system" fn Java_org_proxydroid_utils_Tun2SocksHelper_nativeStop(
-    _env: JNIEnv,
+    mut env: JNIEnv,
     _class: JClass,
 ) {
     // Catch panics for the same reason as nativeStart.
-    let _ = std::panic::catch_unwind(|| {
-        tun2socks::stop();
+    let result = std::panic::catch_unwind(|| {
+        if !tun2socks::stop() { return false; }
         protect::clear_vpn_service();
-        logging::bridge_log("nativeStop: requested");
+        logging::bridge_log("nativeStop: completed");
+        true
     });
+    if !matches!(result, Ok(true)) {
+        let _ = env.throw_new("java/lang/IllegalStateException", "Native VPN stop did not complete; reconnect refused");
+    }
 }
