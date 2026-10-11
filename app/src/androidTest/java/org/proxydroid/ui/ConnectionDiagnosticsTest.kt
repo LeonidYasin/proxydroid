@@ -7,6 +7,7 @@ import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.graphics.asAndroidBitmap
 
 @OptIn(ExperimentalTestApi::class)
 class ConnectionDiagnosticsTest {
@@ -72,6 +73,14 @@ class ConnectionDiagnosticsTest {
         val popup = compose.onNodeWithTag("diagnostic-share-dialog").getUnclippedBoundsInRoot()
         val qr = compose.onNodeWithTag("diagnostic-share-qr").getUnclippedBoundsInRoot()
         assertTrue("Whole QR within popup", qr.left >= popup.left && qr.right <= popup.right && qr.top >= popup.top && qr.bottom <= popup.bottom)
+        compose.onNodeWithTag("diagnostic-share-qr").assertIsDisplayed()
+        compose.waitForIdle()
+        val rendered = compose.onNodeWithTag("diagnostic-share-qr").captureToImage().asAndroidBitmap()
+        assertTrue("QR has useful nonzero rendered dimensions", rendered.width >= 120 && rendered.height >= 120)
+        val pixels = IntArray(rendered.width * rendered.height)
+        rendered.getPixels(pixels, 0, rendered.width, 0, 0, rendered.width, rendered.height)
+        val scan = com.google.zxing.MultiFormatReader().decode(com.google.zxing.BinaryBitmap(com.google.zxing.common.HybridBinarizer(com.google.zxing.RGBLuminanceSource(rendered.width, rendered.height, pixels))))
+        assertTrue("Camera-readable actual rendered QR", scan.text.startsWith("http://") && scan.text.endsWith("/diagnostics.txt"))
         saveScreen("diagnostic-dpad-qr.png")
         compose.onNodeWithTag("close-diagnostic-share").performKeyInput { pressKey(Key.DirectionCenter) }
         compose.onNodeWithTag("diagnostic-share-qr").assertDoesNotExist()
@@ -89,6 +98,10 @@ class ConnectionDiagnosticsTest {
         compose.onNodeWithTag("share-diagnostic-qr").assertIsFocused().assertIsDisplayed()
     }
     private fun saveScreen(name: String) {
+        compose.waitForIdle()
+        // Hardware screenshot can trail the semantics tree by a frame. This is
+        // capture synchronization only; key/focus tests do not use this delay.
+        Thread.sleep(300)
         val automation = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation
         val bitmap = checkNotNull(automation.takeScreenshot())
         val bytes = java.io.ByteArrayOutputStream()
