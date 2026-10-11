@@ -68,10 +68,19 @@ public class MinifiedReleaseSmokeTest {
         start.setAccessible(true);
         // Empty host is rejected before accessing VpnService/TUN: no network,
         // VPN permission or bogus descriptor is used by this linkage test.
-        assertEquals(-1, ((Number)start.invoke(helper, null, -1, 1500, "socks5", "", 9, "", "")).intValue());
+        assertEquals(-11, ((Number)start.invoke(helper, null, -1, 1500, "socks5", "", 9, "", "")).intValue());
         Method stop = type.getDeclaredMethod("nativeStop");
         stop.setAccessible(true);
         stop.invoke(helper);
+        Method status = type.getDeclaredMethod("nativeStatus");
+        status.setAccessible(true);
+        long[] observation = (long[]) status.invoke(helper);
+        assertNotNull(observation);
+        assertEquals(17, observation.length);
+        assertEquals(0L, observation[0]);
+        // The public wrapper/parser must survive optimisation too; reflection
+        // does not rely on the obfuscated runtime-observation class name.
+        assertNotNull(type.getDeclaredMethod("runtimeHealth").invoke(helper));
     }
     private static void saveDrawable(Context context, android.graphics.drawable.Drawable drawable,
             String name, int width, int height) throws Exception {
