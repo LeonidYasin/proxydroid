@@ -255,7 +255,7 @@ private fun ConnectionCard(
     val inputMode = LocalInputModeManager.current
     var initialFocusSet by remember { mutableStateOf(false) }
     LaunchedEffect(state.isConnecting) {
-        if (!initialFocusSet && !state.isConnecting && !(state.isWorking && state.internetAvailable == true && !state.internetChecking)) {
+        if (!initialFocusSet && !(state.isWorking && state.internetAvailable == true && !state.internetChecking)) {
             // Foundation switches/buttons reject focus in touch mode. Enter
             // DPAD/keyboard mode before assigning the initial remote focus.
             inputMode.requestInputMode(InputMode.Keyboard)
@@ -277,7 +277,7 @@ private fun ConnectionCard(
             modifier = Modifier.fillMaxWidth().heightIn(min = 84.dp)
                 .focusRequester(focusRequester)
                 .tvRemoteFocus().testTag("connection-row")
-                .toggleable(value = on, enabled = !state.isConnecting,
+                .toggleable(value = on || state.isConnecting,
                     role = Role.Switch, onValueChange = onToggle)
                 .padding(20.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -287,7 +287,7 @@ private fun ConnectionCard(
                 CircleShape))
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Text(if (on) "Connected" else "Disconnected",
+                Text(if (state.isConnecting) "Connecting / waiting — OK to stop" else if (on) "Connected" else "Disconnected",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.SemiBold)
                 Text(secondaryStatus(state), style = MaterialTheme.typography.bodyMedium)
@@ -300,7 +300,7 @@ private fun ConnectionCard(
                 modifier = Modifier.size(28.dp), strokeWidth = 3.dp)
             // Passive visual indicator: the entire row is the only toggle/focus
             // target. This prevents clipped labels when returning with DPAD.
-            Switch(checked = on, onCheckedChange = null, enabled = !state.isConnecting,
+            Switch(checked = on || state.isConnecting, onCheckedChange = null,
                 modifier = Modifier.testTag("connection-toggle"))
         }
         if (on) Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 16.dp)) {

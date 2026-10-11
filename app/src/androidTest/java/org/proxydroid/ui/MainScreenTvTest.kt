@@ -85,5 +85,14 @@ class MainScreenTvTest {
         compose.onNodeWithTag("connection-row").performKeyInput { pressKey(Key.DirectionCenter) }
         compose.runOnIdle { assertEquals(1, calls); assertTrue(requested) }
     }
+    @Test fun dpadCanStopIndefiniteNetworkWaiting() {
+        var calls = 0; var requested = true
+        compose.setContent { MaterialTheme {
+            MainScreen(MainUiState(isConnecting = true), { calls++; requested = it }, {}, {}, {}, {}, {}, {}, {}, {}, {})
+        } }
+        compose.onNodeWithTag("connection-row").assertIsFocused().assertIsDisplayed()
+            .performKeyInput { pressKey(Key.DirectionCenter) }
+        compose.runOnIdle { assertEquals(1, calls); assertFalse(requested) }
+    }
 
 }
