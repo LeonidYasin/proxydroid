@@ -77,6 +77,11 @@ class ProxyDroid : ComponentActivity() {
                     onCheckYouTube = viewModel::checkYouTube,
                     onShowDiagnostics = viewModel::showDiagnostics,
                     onRecovery = { recoveryVisible = true },
+                    focusSuspended = recoveryVisible || updateState.visible,
+                    onLanAutoScan = viewModel::setLanAutoScan,
+                    onLanScan = viewModel::scanLan,
+                    onLanCancel = viewModel::cancelLanScan,
+                    onLanSelect = ::connectLanProxy,
                 )
                 if (recoveryVisible) org.proxydroid.ui.RecoveryDialog(recoveryBusy, ::recover,
                     { openSystemSettings(android.provider.Settings.ACTION_VPN_SETTINGS) },
@@ -114,7 +119,33 @@ class ProxyDroid : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         viewModel.reload()
+        viewModel.setForeground(true)
         updates.onResume(this)
+    }
+
+    override fun onStop() {
+        viewModel.setForeground(false)
+        super.onStop()
+    }
+
+    private fun connectLanProxy(proxy: org.proxydroid.utils.LanProxy) {
+        if (recoveryBusy || proxy !in viewModel.state.value.lanProxies) return
+        recoveryBusy = true
+        viewModel.prepareRecovery()
+        lifecycleScope.launch {
+            try {
+                if (Utils.isWorking() || Utils.isConnecting()) {
+                    if (!org.proxydroid.utils.VpnRecovery.stopAndAwait(this@ProxyDroid)) {
+                        viewModel.reportConnectionError("VPN не подтвердил остановку. Новый прокси не выбран.")
+                        return@launch
+                    }
+                }
+                viewModel.finishRecovery()
+                if (!viewModel.selectLanProxy(proxy)) return@launch
+                if (proxy.requiresAuth) viewModel.reportConnectionError("Прокси требует авторизацию. Укажите её в новом профиле; старые пароли не перенесены. HTTP-прокси может требовать неподдерживаемый NTLM/Digest.")
+                else if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) startVpn()
+            } finally { recoveryBusy = false; viewModel.finishRecovery() }
+        }
     }
 
     private fun startVpn() {

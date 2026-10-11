@@ -14,9 +14,13 @@ import android.util.Log
 
 class Tun2SocksHelper {
     @Volatile private var running = false
+    @Volatile var lastStartFailure: String? = null
+        private set
 
     companion object {
         private const val TAG = "Tun2SocksHelper"
+
+        fun readRuntimeHealth(): NativeRuntimeHealth? = runCatching { Tun2SocksHelper().runtimeHealth() }.getOrNull()
 
         init {
             System.loadLibrary("proxydroid_tun2socks")
@@ -40,7 +44,9 @@ class Tun2SocksHelper {
         socksUser: String?,
         socksPassword: String?,
     ): Boolean {
+        lastStartFailure = null
         if (running) {
+            lastStartFailure = "JAVA_ALREADY_RUNNING: helper session is already active"
             Log.w(TAG, "tun2socks already running")
             return false
         }
@@ -56,10 +62,12 @@ class Tun2SocksHelper {
                 socksPassword ?: "",
             )
         } catch (t: Throwable) {
+            lastStartFailure = "JNI_EXCEPTION: ${t.javaClass.simpleName}; no raw error/credentials retained"
             Log.e(TAG, "nativeStart threw", t)
             return false
         }
         if (rc != 0) {
+            lastStartFailure = NativeRuntimeHealth.startFailure(rc)
             Log.e(TAG, "nativeStart failed rc=$rc")
             return false
         }
@@ -69,7 +77,8 @@ class Tun2SocksHelper {
 
     @Synchronized
     fun stop() {
-        if (!running) return
+        // Rust owns a process-wide session. A failed/new Java helper may have
+        // running=false while an old native session remains busy. Stop is idempotent.
         nativeStop() // Failure must reach the stop acknowledgement; never lie about cleanup.
         running = false
     }
@@ -88,4 +97,8 @@ class Tun2SocksHelper {
     ): Int
 
     private external fun nativeStop()
+    private external fun nativeStatus(): LongArray
+
+    fun runtimeHealth(): NativeRuntimeHealth? = runCatching { NativeRuntimeHealth.parse(nativeStatus()) }.getOrNull()
+
 }

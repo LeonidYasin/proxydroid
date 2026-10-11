@@ -1,6 +1,7 @@
 package org.proxydroid.ui
 
 import android.content.Intent
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.relocation.BringIntoViewRequester
@@ -74,6 +75,7 @@ import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.platform.testTag
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -114,6 +116,11 @@ fun MainScreen(
     onCheckYouTube: () -> Unit = {},
     onShowDiagnostics: () -> Unit = {},
     onRecovery: () -> Unit = {},
+    focusSuspended: Boolean = false,
+    onLanAutoScan: (Boolean) -> Unit = {},
+    onLanScan: () -> Unit = {},
+    onLanCancel: () -> Unit = {},
+    onLanSelect: (org.proxydroid.utils.LanProxy) -> Unit = {},
 ) {
     val scroll = rememberScrollState()
     var menuOpen by remember { mutableStateOf(false) }
@@ -188,7 +195,7 @@ fun MainScreen(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            ConnectionCard(state = state, onToggle = onToggle, onCheckAlive = onCheckAlive, focusRequester = connectionFocus, onOpenYouTube = onOpenYouTube, onDiagnostics = onRunDiagnostics)
+            ConnectionCard(state = state, onToggle = onToggle, onCheckAlive = onCheckAlive, focusRequester = connectionFocus, onOpenYouTube = onOpenYouTube, onDiagnostics = onRunDiagnostics, focusSuspended = focusSuspended || state.diagnosticVisible)
             ConnectionDiagnostics(state, onRunDiagnostics, onCheckYouTube, onShowDiagnostics)
             AutoGatewayCard(
                 enabled = state.profile.useGatewayAsHost,
@@ -207,6 +214,7 @@ fun MainScreen(
                 status = state.bootStatus,
                 onChange = { onProfileEdit { autoStartOnBoot = it } },
             )
+            LanProxyCard(state, onLanAutoScan, onLanScan, onLanCancel, onLanSelect)
             AdvancedSection(
                 profile = state.profile,
                 expanded = state.advancedExpanded,
@@ -244,17 +252,23 @@ private fun ConnectionCard(
     focusRequester: FocusRequester,
     onOpenYouTube: () -> Unit,
     onDiagnostics: () -> Unit,
+    focusSuspended: Boolean,
 ) {
     // Request inside Scaffold's subcomposition, after the target exists.
     val inputMode = LocalInputModeManager.current
-    var initialFocusSet by remember { mutableStateOf(false) }
-    LaunchedEffect(state.isConnecting) {
-        if (!initialFocusSet && !state.isConnecting && !(state.isWorking && state.internetAvailable == true && !state.internetChecking)) {
-            // Foundation switches/buttons reject focus in touch mode. Enter
-            // DPAD/keyboard mode before assigning the initial remote focus.
+    var placed by remember { mutableStateOf(false) }
+    var lastConnectionState by remember { mutableStateOf<Pair<Boolean, Boolean>?>(null) }
+    val connectionState = state.isWorking to state.isConnecting
+    LaunchedEffect(connectionState, placed, focusSuspended) {
+        // Structural removal of liveness/actions otherwise lets Compose choose
+        // a spatial neighbour such as Port. Re-anchor only on session changes,
+        // never on periodic probe/internet success updates or while a popup owns focus.
+        if (focusSuspended) { lastConnectionState = null; return@LaunchedEffect }
+        if (placed && lastConnectionState != connectionState) {
             inputMode.requestInputMode(InputMode.Keyboard)
+            withFrameNanos { }
             focusRequester.requestFocus()
-            initialFocusSet = true
+            lastConnectionState = connectionState
         }
     }
     val on = state.isWorking
@@ -270,8 +284,10 @@ private fun ConnectionCard(
         Row(
             modifier = Modifier.fillMaxWidth().heightIn(min = 84.dp)
                 .focusRequester(focusRequester)
+                .onGloballyPositioned { placed = true }
+                .focusProperties { left = FocusRequester.Cancel; right = FocusRequester.Cancel }
                 .tvRemoteFocus().testTag("connection-row")
-                .toggleable(value = on, enabled = !state.isConnecting,
+                .toggleable(value = on || state.isConnecting,
                     role = Role.Switch, onValueChange = onToggle)
                 .padding(20.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -281,7 +297,7 @@ private fun ConnectionCard(
                 CircleShape))
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Text(if (on) "Connected" else "Disconnected",
+                Text(if (state.isConnecting) "Connecting / waiting — OK to stop" else if (on) "Connected" else "Disconnected",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.SemiBold)
                 Text(secondaryStatus(state), style = MaterialTheme.typography.bodyMedium)
@@ -294,7 +310,7 @@ private fun ConnectionCard(
                 modifier = Modifier.size(28.dp), strokeWidth = 3.dp)
             // Passive visual indicator: the entire row is the only toggle/focus
             // target. This prevents clipped labels when returning with DPAD.
-            Switch(checked = on, onCheckedChange = null, enabled = !state.isConnecting,
+            Switch(checked = on || state.isConnecting, onCheckedChange = null,
                 modifier = Modifier.testTag("connection-toggle"))
         }
         if (on) Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 16.dp)) {
@@ -307,32 +323,13 @@ private fun ConnectionCard(
 @OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
 @Composable
 internal fun InternetActions(state: MainUiState, onOpenYouTube: () -> Unit, onRetry: () -> Unit) {
-    val youtubeFocus = remember { FocusRequester() }
-    val youtubeView = remember { BringIntoViewRequester() }
-    val inputMode = LocalInputModeManager.current
-    var focusedThisConnection by remember { mutableStateOf(false) }
-    LaunchedEffect(state.isWorking) {
-        if (!state.isWorking) focusedThisConnection = false
-    }
     if (!state.isWorking) return
     when {
         state.internetChecking -> Text("Checking internet through proxy…", style = MaterialTheme.typography.bodySmall)
         state.internetAvailable == true -> {
             Text("HTTPS test succeeded through proxy — not a full VPN or video test", style = MaterialTheme.typography.bodySmall)
             TextButton(onClick = onOpenYouTube, modifier = Modifier
-                .tvRemoteFocus().bringIntoViewRequester(youtubeView)
-                .focusRequester(youtubeFocus).testTag("open-youtube")) { Text("Open YouTube") }
-            // First verified success per connection: show the action and hand off
-            // the remote focus. Retry/poll updates must not repeatedly steal it.
-            LaunchedEffect(Unit) {
-                if (!focusedThisConnection) {
-                    inputMode.requestInputMode(InputMode.Keyboard)
-                    withFrameNanos { } // Wait for the inserted action's layout.
-                    youtubeView.bringIntoView()
-                    youtubeFocus.requestFocus()
-                    focusedThisConnection = true
-                }
-            }
+                .tvRemoteFocus().testTag("open-youtube")) { Text("Open YouTube") }
         }
         state.internetAvailable == false -> {
             Text("Internet through proxy could not be verified", color = MaterialTheme.colorScheme.error,
@@ -451,7 +448,8 @@ private fun AutoGatewayCard(enabled: Boolean, onChange: (Boolean) -> Unit, gatew
                 title = "Use default gateway as proxy host",
                 subtitle = "Automatically use the current network's default gateway " +
                     "(e.g. the phone's hotspot address 192.168.43.1) as the upstream " +
-                    "proxy host, instead of the manually configured Host.",
+                    "proxy host, instead of the manually configured Host. " +
+                    "После потери сети активный auto-VPN ждёт новый шлюз и пересоздаётся даже при закрытом интерфейсе.",
                 checked = enabled,
                 onChange = onChange,
             )
@@ -665,6 +663,7 @@ private fun AdvancedSection(
     }
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun ToggleRow(
     title: String,
@@ -676,6 +675,7 @@ private fun ToggleRow(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 56.dp)
+            .focusProperties { left = FocusRequester.Cancel; right = FocusRequester.Cancel }
             .tvRemoteFocus()
             .toggleable(checked, role = Role.Switch, onValueChange = onChange)
             .padding(8.dp),
@@ -748,7 +748,7 @@ private fun TextEditDialog(
 }
 
 @Composable
-private fun ConfirmDialog(
+internal fun ConfirmDialog(
     title: String,
     confirmText: String,
     onDismiss: () -> Unit,
@@ -757,7 +757,16 @@ private fun ConfirmDialog(
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
-        confirmButton = { TextButton(onClick = onConfirm) { Text(confirmText) } },
+        confirmButton = {
+            // Focus inside the dialog window, after the button has been placed.
+            val confirmFocus = remember { FocusRequester() }
+            var placed by remember { mutableStateOf(false) }
+            LaunchedEffect(placed) {
+                if (placed) { withFrameNanos { }; confirmFocus.requestFocus() }
+            }
+            TextButton(onClick = onConfirm, modifier = Modifier.focusRequester(confirmFocus)
+                .onGloballyPositioned { placed = true }.tvRemoteFocus()) { Text(confirmText) }
+        },
         dismissButton = { TextButton(onClick = onDismiss, modifier = Modifier.tvRemoteFocus()) { Text("Cancel") } },
     )
 }

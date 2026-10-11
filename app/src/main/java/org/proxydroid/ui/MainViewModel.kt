@@ -32,6 +32,10 @@ import org.proxydroid.Profile
 import org.proxydroid.utils.NetworkUtils
 import org.proxydroid.utils.Utils
 
+import org.proxydroid.utils.LanProxy
+import org.proxydroid.utils.LanProxyDiscovery
+import org.proxydroid.utils.ProbeRoute
+
 data class ProfileEntry(val id: String, val name: String)
 
 data class MainUiState(
@@ -56,6 +60,12 @@ data class MainUiState(
      */
     val lastError: String? = null,
     val gatewayIp: String? = null,
+    val lanAutoScan: Boolean = false,
+    val lanScanning: Boolean = false,
+    val lanProxies: List<LanProxy> = emptyList(),
+    val lanStatus: String = "Поиск ещё не выполнялся",
+    val lanScope: String? = null,
+
     val internetChecking: Boolean = false,
     val internetAvailable: Boolean? = null,
     val bootStatus: String? = null,
@@ -71,6 +81,7 @@ data class MainUiState(
 class MainViewModel @JvmOverloads constructor(app: Application,
     private val gatewayLookup: (Context) -> String? = NetworkUtils::getGatewayIp,
     private val observeNetwork: Boolean = true,
+    private val lanScanner: suspend (org.proxydroid.utils.LanScanPlan, ProbeRoute, (Int, Int, List<LanProxy>) -> Unit) -> org.proxydroid.utils.LanScanResult = LanProxyDiscovery::scan,
 ) : AndroidViewModel(app) {
 
     private val settings: SharedPreferences =
@@ -100,6 +111,14 @@ class MainViewModel @JvmOverloads constructor(app: Application,
         networkChangeJob = viewModelScope.launch {
             delay(750)
             refreshGateway()
+            val signature = NetworkUtils.physicalGateway(getApplication())?.signature
+            if (signature != lanSignature) {
+                cancelLanScan()
+                _state.value = _state.value.copy(lanProxies = emptyList(), lanScope = null,
+                    lanStatus = "Сеть изменилась — прежние результаты удалены")
+                lanSignature = signature
+                if (foreground && _state.value.lanAutoScan && signature != null) scanLan()
+            }
             if (Utils.isWorking()) checkDiagnostics(showReport = _state.value.diagnosticVisible)
         }
     } }
@@ -113,6 +132,11 @@ class MainViewModel @JvmOverloads constructor(app: Application,
     @Volatile private var diagnosticRequest = 0L
     private var lastAutoEndpoint: ProxyEndpoint? = null
     private var aliveJob: Job? = null
+    private var lanJob: Job? = null
+    private var lanRequest = 0L
+    private var lanSignature: String? = null
+    private var foreground = false
+
 
     init {
         settings.registerOnSharedPreferenceChangeListener(prefListener)
@@ -155,6 +179,7 @@ class MainViewModel @JvmOverloads constructor(app: Application,
 
     override fun onCleared() {
         super.onCleared()
+        cancelLanScan()
         pollingJob?.cancel()
         gatewayJob?.cancel(); internetJob?.cancel(); aliveJob?.cancel(); networkChangeJob?.cancel()
         if (networkRegistered) runCatching { cm?.unregisterNetworkCallback(networkCallback) }
@@ -169,7 +194,8 @@ class MainViewModel @JvmOverloads constructor(app: Application,
         if (profile.proxyType.isEmpty()) profile.proxyType = "socks5"
         _state.value = _state.value.copy(profile = profile, profiles = loadProfileList(),
             currentProfileId = current, isWorking = Utils.isWorking(), isConnecting = Utils.isConnecting(),
-            bootStatus = settings.getString(BootStatus.KEY, null))
+            bootStatus = settings.getString(BootStatus.KEY, null),
+            lanAutoScan = settings.getBoolean("lanDiscoveryEnabled", false))
         refreshGateway()
     }
 
@@ -211,9 +237,96 @@ class MainViewModel @JvmOverloads constructor(app: Application,
                 if (showMissingError) _state.value = _state.value.copy(lastError = "No usable IPv4 default gateway on this network. Host was not changed.")
             } else {
                 updateProfile { host = gateway }
-                clearError()
+                // A gateway refresh is not proof of successful VPN cleanup/startup.
+                if (_state.value.lastError == "No usable IPv4 default gateway on this network. Host was not changed.") clearError()
             }
         }
+    }
+
+    fun setForeground(active: Boolean) {
+        foreground = active
+        if (!active) cancelLanScan()
+        else if (_state.value.lanAutoScan) scanLan()
+    }
+
+    fun setLanAutoScan(enabled: Boolean) {
+        settings.edit().putBoolean("lanDiscoveryEnabled", enabled).apply()
+        _state.value = _state.value.copy(lanAutoScan = enabled)
+        if (enabled && foreground) scanLan() else cancelLanScan()
+    }
+
+    fun cancelLanScan() {
+        lanRequest++; lanJob?.cancel(); lanJob = null
+        if (_state.value.lanScanning) _state.value = _state.value.copy(lanScanning = false,
+            lanStatus = "Поиск остановлен; результаты частичные")
+    }
+
+    fun scanLan() {
+        if (recovering || _state.value.lanScanning) return
+        cancelLanScan()
+        val physical = NetworkUtils.physicalGateway(getApplication())
+        if (physical == null) {
+            _state.value = _state.value.copy(lanProxies = emptyList(), lanScope = null,
+                lanStatus = "Нет IPv4-шлюза Wi-Fi/Ethernet. Подключитесь к локальной сети.")
+            return
+        }
+        val profile = _state.value.profile
+        val plan = try { LanProxyDiscovery.plan(physical.address, physical.prefix, physical.gateway, profile.host, profile.port) }
+        catch (failure: IllegalArgumentException) {
+            _state.value = _state.value.copy(lanProxies = emptyList(), lanScope = null,
+                lanStatus = failure.message ?: "Сеть не подходит для безопасного поиска")
+            return
+        }
+        val request = ++lanRequest
+        lanSignature = physical.signature
+        _state.value = _state.value.copy(lanScanning = true, lanProxies = emptyList(), lanScope = plan.scope,
+            lanStatus = "Проверка 0/${plan.hosts.size * plan.ports.size}")
+        lanJob = viewModelScope.launch {
+            try {
+                val route = ProbeRoute(bind = { physical.network.bindSocket(it) })
+                val result = lanScanner(plan, route) { done, total, found ->
+                    viewModelScope.launch {
+                        if (request == lanRequest) _state.value = _state.value.copy(lanProxies = found,
+                            lanStatus = "Проверка $done/$total · найдено ${found.size}")
+                    }
+                }
+                if (request != lanRequest) return@launch
+                // Invalidate queued progress after final result.
+                lanRequest++
+                _state.value = _state.value.copy(lanScanning = false, lanProxies = result.proxies,
+                    lanStatus = "${if (result.timedOut) "Лимит 90 секунд; частичный результат" else "Поиск завершён"} · проверено ${result.checked}/${result.total}; открытых портов ${result.openPorts}; прокси ${result.proxies.size}")
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) {
+                if (request == lanRequest) _state.value = _state.value.copy(lanScanning = false,
+                    lanStatus = "Поиск прерван: проверьте доступ к локальной сети и изоляцию Wi-Fi клиентов")
+            }
+        }
+    }
+
+    /** Save a NEW profile: never overwrite or send another proxy's saved credentials. */
+    fun selectLanProxy(proxy: LanProxy): Boolean {
+        if (proxy !in _state.value.lanProxies || recovering) return false
+        if (NetworkUtils.physicalGateway(getApplication())?.signature != lanSignature) {
+            reportConnectionError("Сеть поиска уже изменилась. Повторите поиск перед выбором прокси.")
+            return false
+        }
+        persistCurrentProfileJson(_state.value.profile)
+        gatewayJob?.cancel(); gatewayRequest++
+        invalidateDiagnostics()
+        val id = nextProfileId()
+        val p = Profile().apply {
+            init(); name = "LAN ${proxy.host}:${proxy.port}"
+            host = proxy.host; port = proxy.port; proxyType = proxy.type
+            useGatewayAsHost = false; isAuth = false; user = ""; password = ""
+            // Keep the user's routing policy; new proxy must not broaden an allow list.
+            proxyApps = _state.value.profile.proxyApps
+            isBypassApps = _state.value.profile.isBypassApps
+            autoStartOnBoot = false
+        }
+        settings.edit().putString("profile", id).putString("profile$id", p.name).apply()
+        p.setProfile(settings); settings.edit().putString(id, p.toString()).apply()
+        _state.value = _state.value.copy(profile = p, currentProfileId = id, profiles = loadProfileList())
+        return true
     }
 
     fun checkInternet() {
@@ -223,6 +336,7 @@ class MainViewModel @JvmOverloads constructor(app: Application,
     fun finishRecovery() { recovering = false; refreshGateway() }
     fun prepareRecovery() {
         recovering = true
+        cancelLanScan()
         dismissDiagnostics(); cancelDiagnostics()
         aliveJob?.cancel(); gatewayJob?.cancel(); networkChangeJob?.cancel(); pollingJob?.cancel()
         _state.value = _state.value.copy(isAlive = null, internetAvailable = null)
@@ -424,7 +538,7 @@ class MainViewModel @JvmOverloads constructor(app: Application,
 
     private fun nextProfileId(): String {
         val raw = settings.getString("profileValues", "") ?: ""
-        val ids = raw.split("|").mapNotNull { it.trim().takeIf { s -> s.isNotEmpty() }?.toIntOrNull() }
+        val ids = (raw.split("|").mapNotNull { it.trim().takeIf { s -> s.isNotEmpty() }?.toIntOrNull() } + listOfNotNull(_state.value.currentProfileId.toIntOrNull())).distinct()
         val next = ((ids.maxOrNull() ?: 0) + 1).toString()
         // Maintain the legacy profileEntries / profileValues bookkeeping.
         val values = (ids + next.toInt()).joinToString("|") + "|"

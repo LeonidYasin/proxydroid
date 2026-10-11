@@ -28,7 +28,7 @@ import org.proxydroid.utils.Utils
 class ConnectivityBroadcastReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
-        if (Utils.isConnecting()) return
+        if (Utils.isWorking() || Utils.isConnecting()) return
         if (intent.action != ConnectivityManager.CONNECTIVITY_ACTION) return
 
         // BroadcastReceiver runs on the main thread; offload to IO with goAsync().
@@ -43,6 +43,8 @@ class ConnectivityBroadcastReceiver : BroadcastReceiver() {
     }
 
     private fun handle(context: Context, intent: Intent) {
+        if (Utils.isWorking() || Utils.isConnecting()) return
+
         val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val networkInfo = manager.activeNetworkInfo
 

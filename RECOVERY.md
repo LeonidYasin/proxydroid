@@ -86,3 +86,13 @@ LocProxyTV-v3.8.9-diagnostics-20261011-161155.txt, чтобы не перепу�
 файл из Downloads со свежим. Установленная версия/build также показаны
 в заголовке окна отчёта. Имя вложения ограничено безопасными ASCII символами;
 это не путь к файлу на приставке.
+
+## Native runtime observations (3.9.0 candidate)
+
+- Native start errors now retain a safe exact code: already-running, invalid config, runtime, DoH-client initialisation, I/O, panic. They are not all reported as an unreachable proxy. Stop calls the process-wide native stop even if a newly-created Java helper's local running flag is false.
+- Reader, TCP runner, stack, acceptor and writer are supervised; any unexpected core exit cancels/drains siblings and child relays. Native root completion clears BUSY; explicit stop awaits cleanup including panicked completion. JNI lifecycle is serialised. No periodic forced restart of a healthy session or takeover after Android revoke.
+- Read-only native snapshots expose busy/root-finished/reader-heartbeat and aggregate packet/TCP/DNS/unsupported-UDP/IPv6/error counters, no payloads/domains/credentials. A service watcher detects a completed native root and closes the stale Android TUN instead of leaving a false Connected state. Idle or unchanged counters alone do not prove a fault; snapshots are not end-to-end traffic probes.
+- A 20-second deadline covers only new upstream TCP/TLS/proxy handshakes; established relays have no new five-/ten-minute timeout.
+- If upstream HTTPS passes but YouTube stalls, capture two reports ~20 seconds apart before restarting. Compare native heartbeat, TUN/TCP/DNS/errors and unsupported UDP. Actual video/CDN, client cache and other-app VPN policy are not proved by website/thumbnail checks.
+- During network-loss/rebuild the app is not a kill switch: do not assume traffic outside an established VPN is blocked. Auto-gateway may carry configured credentials to a new gateway; enable it only on trusted networks.
+- Legacy SSID auto-connect does not stop/switch an already active/waiting VPN on generic connectivity broadcasts; active network recovery is owned by the foreground service.

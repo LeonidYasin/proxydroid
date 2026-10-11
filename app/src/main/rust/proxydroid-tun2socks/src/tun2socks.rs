@@ -13,8 +13,9 @@ use crate::dns_table;
 use crate::doh_client;
 use crate::error::Tun2SocksError;
 use crate::logging;
+use crate::health;
 use base64::Engine;
-use futures::{SinkExt, StreamExt};
+use futures::{SinkExt, StreamExt, FutureExt};
 use parking_lot::Mutex as ParkMutex;
 use std::io;
 use std::net::{Ipv4Addr, SocketAddr};
@@ -73,12 +74,15 @@ static TUN2SOCKS_RUNNING: AtomicBool = AtomicBool::new(false);
 /// non-async code (JNI thread).
 static SHUTDOWN_TX: ParkMutex<Option<oneshot::Sender<()>>> = ParkMutex::new(None);
 static SESSION: ParkMutex<Option<tokio::task::JoinHandle<()>>> = ParkMutex::new(None);
+static LIFECYCLE_LOCK: ParkMutex<()> = ParkMutex::new(());
 
 pub fn start(fd: i32, cfg: UpstreamConfig) -> Result<(), Tun2SocksError> {
+    let _lifecycle = LIFECYCLE_LOCK.lock();
     if TUN2SOCKS_RUNNING.swap(true, Ordering::SeqCst) {
         return Err(Tun2SocksError::AlreadyRunning);
     }
 
+    health::reset();
     info!(
         "tun2socks starting: fd={}, kind={:?}, upstream={}:{}",
         fd, cfg.kind, cfg.host, cfg.port
@@ -91,17 +95,18 @@ pub fn start(fd: i32, cfg: UpstreamConfig) -> Result<(), Tun2SocksError> {
         return Err(e);
     }
 
-    // SAFETY: `fd` is a TUN file descriptor handed to us by Android's
-    // VpnService. fcntl is safe on any valid fd; failure (e.g. fd already
-    // closed) is logged and ignored because subsequent reads will fail and the
-    // loop will tear itself down.
-    unsafe {
+    // Invalid/closed descriptors must fail synchronously, not advertise Connected
+    // and leave a blocking/dead reader behind.
+    let fd_result: io::Result<()> = unsafe {
         let flags = libc::fcntl(fd, libc::F_GETFL);
-        if flags < 0 {
-            logging::bridge_log("tun2socks: fcntl(F_GETFL) failed");
-        } else if libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) < 0 {
-            logging::bridge_log("tun2socks: fcntl(F_SETFL, O_NONBLOCK) failed");
-        }
+        if flags < 0 || libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) < 0 {
+            Err(io::Error::last_os_error())
+        } else { Ok(()) }
+    };
+    if let Err(error) = fd_result {
+        doh_client::clear();
+        TUN2SOCKS_RUNNING.store(false, Ordering::SeqCst);
+        return Err(Tun2SocksError::Io(error));
     }
 
     let rt = crate::try_get_runtime().inspect_err(|_| {
@@ -112,8 +117,10 @@ pub fn start(fd: i32, cfg: UpstreamConfig) -> Result<(), Tun2SocksError> {
     *SHUTDOWN_TX.lock() = Some(shutdown_tx);
 
     *SESSION.lock() = Some(rt.spawn(async move {
-        if let Err(e) = run_tun2socks(fd, cfg, shutdown_rx).await {
-            logging::bridge_log(&format!("tun2socks error: {}", e));
+        match std::panic::AssertUnwindSafe(run_tun2socks(fd, cfg, shutdown_rx)).catch_unwind().await {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => { logging::bridge_log(&format!("tun2socks error: {}", e)); }
+            Err(_) => { health::exit(6); logging::bridge_log("tun2socks root task panicked"); }
         }
         // Drop any leftover sender so a late stop() doesn't think the loop is
         // alive.
@@ -129,8 +136,14 @@ pub fn start(fd: i32, cfg: UpstreamConfig) -> Result<(), Tun2SocksError> {
 
 /// Request a graceful stop. Idempotent and safe to call from any thread.
 pub fn stop() -> bool {
+    let _lifecycle = LIFECYCLE_LOCK.lock();
     if let Some(tx) = SHUTDOWN_TX.lock().take() { let _ = tx.send(()); }
-    let Some(mut session) = SESSION.lock().take() else { return true; };
+    let Some(mut session) = SESSION.lock().take() else {
+        // A synchronous start panic can set BUSY before a root task exists.
+        dns_table::clear(); doh_client::clear();
+        TUN2SOCKS_RUNNING.store(false, Ordering::SeqCst);
+        return true;
+    };
     let Ok(rt) = crate::try_get_runtime() else { return false; };
     // JNI caller is outside Tokio. Do not advertise a stopped session until
     // all relay/DNS tasks have been cancelled and their sockets dropped.
@@ -139,7 +152,18 @@ pub fn stop() -> bool {
         logging::bridge_log("tun2socks: stop timed out; reconnect refused until old session exits");
         return false;
     }
+    // Awaited completion (including JoinError) is not allowed to leave BUSY set.
+    // Child tasks are supervised and drained by run_tun2socks before return.
+    dns_table::clear(); doh_client::clear();
+    *SHUTDOWN_TX.lock() = None;
+    TUN2SOCKS_RUNNING.store(false, Ordering::SeqCst);
     true
+}
+
+pub fn health_snapshot() -> [i64; 17] {
+    let running = TUN2SOCKS_RUNNING.load(Ordering::SeqCst);
+    let finished = SESSION.lock().as_ref().is_some_and(|task| task.is_finished());
+    health::snapshot(running, finished)
 }
 
 // ---------------------------------------------------------------------------
@@ -172,14 +196,14 @@ async fn run_tun2socks(
     let (ingress_tx, mut ingress_rx) = mpsc::channel::<AnyIpPktFrame>(256);
     let (egress_tx, mut egress_rx) = mpsc::unbounded_channel::<Vec<u8>>();
 
-    let runner_handle = tokio::spawn(async move {
+    let mut runner_handle = tokio::spawn(async move {
         if let Err(e) = tcp_runner.await {
             logging::bridge_log(&format!("tun2socks: TCP runner error: {}", e));
         }
     });
 
     let egress_tx2 = egress_tx.clone();
-    let stack_handle = tokio::spawn(async move {
+    let mut stack_handle = tokio::spawn(async move {
         loop {
             tokio::select! {
                 pkt = ingress_rx.recv() => {
@@ -210,7 +234,7 @@ async fn run_tun2socks(
     let children = Arc::new(tokio::sync::Mutex::new(tokio::task::JoinSet::new()));
     let tcp_children = children.clone();
     let cfg_for_accept = cfg.clone();
-    let tcp_accept_handle = tokio::spawn(async move {
+    let mut tcp_accept_handle = tokio::spawn(async move {
         while let Some((stream, local_addr, remote_addr)) = tcp_listener.next().await {
             let cfg = cfg_for_accept.clone();
             while tcp_children.lock().await.try_join_next().is_some() {}
@@ -221,12 +245,13 @@ async fn run_tun2socks(
         }
     });
 
-    let tun_writer_handle = tokio::spawn(async move {
+    let mut tun_writer_handle = tokio::spawn(async move {
         while let Some(pkt) = egress_rx.recv().await {
             let mut retries = 0u32;
             loop {
                 let written = unsafe { libc::write(fd, pkt.as_ptr() as *const c_void, pkt.len()) };
-                if written >= 0 {
+                if written == pkt.len() as isize {
+                    health::bump(4);
                     break;
                 }
                 let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
@@ -234,6 +259,11 @@ async fn run_tun2socks(
                     retries += 1;
                     tokio::task::yield_now().await;
                     continue;
+                }
+                health::bump(13);
+                if errno != libc::EAGAIN && errno != libc::EINTR {
+                    health::exit(8);
+                    return;
                 }
                 break;
             }
@@ -245,6 +275,7 @@ async fn run_tun2socks(
     let mut tun_reader_handle = tokio::spawn(async move {
         let mut read_buf = vec![0u8; 65535];
         loop {
+            health::heartbeat();
             if !TUN2SOCKS_RUNNING.load(Ordering::SeqCst) {
                 break;
             }
@@ -254,12 +285,20 @@ async fn run_tun2socks(
             loop {
                 let n =
                     unsafe { libc::read(fd, read_buf.as_mut_ptr() as *mut c_void, read_buf.len()) };
+                health::heartbeat();
                 if n <= 0 {
+                    if n == 0 { health::exit(7); return; }
+                    let errno = io::Error::last_os_error().raw_os_error().unwrap_or(0);
+                    if errno != libc::EAGAIN && errno != libc::EINTR {
+                        health::bump(12); health::exit(7); return;
+                    }
                     break;
                 }
+                health::bump(3);
                 did_work = true;
                 let n = n as usize;
                 let ip_data = &read_buf[..n];
+                if ip_data.first().is_some_and(|byte| byte >> 4 == 6) { health::bump(11); }
 
                 if let Some((src_ip, src_port, dst_ip, dst_port, payload)) =
                     parse_udp_packet(ip_data)
@@ -274,6 +313,7 @@ async fn run_tun2socks(
                         });
                         continue;
                     }
+                    health::bump(10);
                 }
 
                 let frame: AnyIpPktFrame = ip_data.to_vec();
@@ -282,7 +322,7 @@ async fn run_tun2socks(
                     Err(mpsc::error::TrySendError::Full(frame)) => {
                         let _ = ingress_tx.send(frame).await;
                     }
-                    Err(mpsc::error::TrySendError::Closed(_)) => break,
+                    Err(mpsc::error::TrySendError::Closed(_)) => return,
                 }
             }
 
@@ -292,36 +332,33 @@ async fn run_tun2socks(
         }
     });
 
-    // Wait for either the TUN reader to drain (fd closed) or an explicit
-    // shutdown request from `stop()`. Whichever fires first, we then tear down
-    // every spawned subtask.
-    let reader_finished = tokio::select! {
-        _ = &mut tun_reader_handle => {
-            logging::bridge_log("tun2socks: TUN reader finished");
-            true
+    // Supervise ALL core workers. A dead TCP runner/stack/writer must not leave
+    // a live-looking reader and a permanently black-holed Android VPN.
+    // Catch at the supervisor boundary so teardown is still awaited on unwind.
+    let selected = std::panic::AssertUnwindSafe(async {
+        tokio::select! {
+            _ = shutdown_rx => 0,
+            _ = &mut tun_reader_handle => 1,
+            _ = &mut runner_handle => 2,
+            _ = &mut stack_handle => 3,
+            _ = &mut tcp_accept_handle => 4,
+            _ = &mut tun_writer_handle => 5,
         }
-        _ = shutdown_rx => {
-            // RUNNING stays true until teardown completes: a new session
-            // must not race old DNS/client cleanup. Reader is aborted below.
-            logging::bridge_log("tun2socks: shutdown requested");
-            false
-        }
-    };
+    }).catch_unwind().await.unwrap_or(6);
+    if selected != 0 && health::exit_code() == 0 { health::exit(selected); }
 
-    tun_reader_handle.abort();
-    runner_handle.abort();
-    stack_handle.abort();
-    tcp_accept_handle.abort();
-    tun_writer_handle.abort();
-    if !reader_finished { let _ = tun_reader_handle.await; }
-    let _ = tcp_accept_handle.await;
-    let _ = runner_handle.await;
-    let _ = stack_handle.await;
-    let _ = tun_writer_handle.await;
+    tun_reader_handle.abort(); runner_handle.abort(); stack_handle.abort();
+    tcp_accept_handle.abort(); tun_writer_handle.abort();
+    // The selected JoinHandle result has already been consumed: never poll it twice.
+    if selected != 1 { let _ = tun_reader_handle.await; }
+    if selected != 2 { let _ = runner_handle.await; }
+    if selected != 3 { let _ = stack_handle.await; }
+    if selected != 4 { let _ = tcp_accept_handle.await; }
+    if selected != 5 { let _ = tun_writer_handle.await; }
     children.lock().await.shutdown().await;
 
     logging::bridge_log("tun2socks: exiting");
-    Ok(())
+    if selected == 0 { Ok(()) } else { Err(io::Error::other(format!("native core task ended: {}", selected))) }
 }
 
 // ---------------------------------------------------------------------------
@@ -347,9 +384,12 @@ async fn handle_tcp_stream(
         target_desc
     ));
 
+    health::bump(5);
     let upstream = match connect_upstream(&cfg, &target).await {
         Ok(s) => s,
         Err(e) => {
+            health::bump(7);
+            if e.kind() == io::ErrorKind::TimedOut { health::bump(16); }
             logging::bridge_log(&format!(
                 "UPSTREAM FAIL: {} -> {} err={}",
                 src_addr, dst_addr, e
@@ -358,12 +398,14 @@ async fn handle_tcp_stream(
         }
     };
 
+    health::bump(6);
     let mut upstream = upstream;
     match tokio::io::copy_bidirectional(&mut tun_stream, &mut upstream).await {
         Ok((up, down)) => {
             debug!("TCP relay done: {} up={} down={}", dst_addr, up, down);
         }
         Err(e) => {
+            health::bump(14);
             debug!("TCP relay error: {} err={}", dst_addr, e);
         }
     }
@@ -392,6 +434,12 @@ pub trait AsyncReadWrite: AsyncRead + AsyncWrite {}
 impl<T: AsyncRead + AsyncWrite> AsyncReadWrite for T {}
 
 async fn connect_upstream(cfg: &UpstreamConfig, target: &Target) -> io::Result<AsyncIo> {
+    // Deadline only for opening/handshake, NEVER a five-minute media/relay lifetime.
+    tokio::time::timeout(std::time::Duration::from_secs(20), connect_upstream_unbounded(cfg, target))
+        .await.map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "upstream connect/handshake deadline"))?
+}
+
+async fn connect_upstream_unbounded(cfg: &UpstreamConfig, target: &Target) -> io::Result<AsyncIo> {
     let proxy_addr = format!("{}:{}", cfg.host, cfg.port);
     match cfg.kind {
         ProxyKind::Socks5 => {
@@ -745,6 +793,7 @@ async fn handle_dns_query(
     query: Vec<u8>,
     reply_tx: mpsc::UnboundedSender<Vec<u8>>,
 ) {
+    health::bump(8);
     let name = dns_table::parse_dns_query_name(&query).unwrap_or_default();
     logging::bridge_log(&format!(
         "DoH: {} from {:?}:{}",
@@ -760,7 +809,7 @@ async fn handle_dns_query(
         let _ = reply_tx.send(build_udp_packet(
             dst_ip, dst_port, src_ip, src_port, &response,
         ));
-    }
+    } else { health::bump(9); }
 }
 
 #[cfg(test)]

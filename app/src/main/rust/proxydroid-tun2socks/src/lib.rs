@@ -8,6 +8,7 @@ mod dns_table;
 mod doh_client;
 mod error;
 mod logging;
+mod health;
 mod protect;
 mod tun2socks;
 
@@ -108,8 +109,15 @@ pub extern "system" fn Java_org_proxydroid_utils_Tun2SocksHelper_nativeStart(
     match result {
         Ok(Ok(())) => 0,
         Ok(Err(e)) => {
-            logging::bridge_log(&format!("nativeStart: error: {}", e));
-            -1
+            let code = match &e {
+                Tun2SocksError::AlreadyRunning => -10,
+                Tun2SocksError::InvalidConfig(_) => -11,
+                Tun2SocksError::Runtime(_) => -12,
+                Tun2SocksError::HttpClient(_) => -13,
+                Tun2SocksError::Io(_) => -14,
+            };
+            logging::bridge_log(&format!("nativeStart: code={} error: {}", code, e));
+            code
         }
         Err(_) => {
             logging::bridge_log("nativeStart: panicked");
@@ -139,5 +147,20 @@ pub extern "system" fn Java_org_proxydroid_utils_Tun2SocksHelper_nativeStop(
     });
     if !matches!(result, Ok(true)) {
         let _ = env.throw_new("java/lang/IllegalStateException", "Native VPN stop did not complete; reconnect refused");
+    }
+}
+
+/// Read-only JNI health snapshot. Does not create a runtime or initiate network requests.
+#[no_mangle]
+pub extern "system" fn Java_org_proxydroid_utils_Tun2SocksHelper_nativeStatus(
+    mut env: JNIEnv, _class: JClass,
+) -> jni::sys::jlongArray {
+    let values = tun2socks::health_snapshot();
+    match env.new_long_array(values.len() as i32) {
+        Ok(array) => {
+            if env.set_long_array_region(&array, 0, &values).is_err() { return std::ptr::null_mut(); }
+            array.into_raw()
+        }
+        Err(_) => std::ptr::null_mut(),
     }
 }

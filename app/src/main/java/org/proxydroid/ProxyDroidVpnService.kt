@@ -50,6 +50,7 @@ class ProxyDroidVpnService : VpnService() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var vpnJob: Job? = null
+    private var runtimeWatchJob: Job? = null
     private val lifecycleLock = Any()
     private val stopping = java.util.concurrent.atomic.AtomicBoolean(false)
     private val generation = java.util.concurrent.atomic.AtomicLong(0)
@@ -86,6 +87,7 @@ class ProxyDroidVpnService : VpnService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
             stopping.set(true)
+            runtimeWatchJob?.cancel()
             Utils.recordVpnEvent("Stop requested")
             generation.incrementAndGet()
             val old = vpnJob
@@ -145,9 +147,12 @@ class ProxyDroidVpnService : VpnService() {
         vpnJob = serviceScope.launch {
             try {
                 if (waitNetwork) BootStatus.record(this@ProxyDroidVpnService, "Waiting for network/proxy (up to 120 seconds)")
+                var initialGatewaySignature: String? = null
                 val ready = withTimeoutOrNull(if (waitNetwork) 120_000L else 5000L) {
                     while (true) {
-                        val gateway = if (autoGateway) NetworkUtils.getGatewayIp(this@ProxyDroidVpnService) else null
+                        val physical = if (autoGateway) NetworkUtils.physicalGateway(this@ProxyDroidVpnService) else null
+                        val gateway = physical?.gateway
+                        initialGatewaySignature = physical?.signature
                         if (gateway != null) host = gateway
                         val networkReady = !waitNetwork || NetworkUtils.hasPhysicalNetwork(this@ProxyDroidVpnService)
                         val gatewayReady = !autoGateway || gateway != null
@@ -168,19 +173,82 @@ class ProxyDroidVpnService : VpnService() {
                 startVpn(session)
                 if (waitNetwork) BootStatus.record(this@ProxyDroidVpnService,
                     if (Utils.isWorking()) "Boot VPN started successfully" else "Boot VPN failed; see connection error")
+                if (autoGateway && Utils.isWorking()) monitorAutoGateway(session, initialGatewaySignature!!, settings, profileId)
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (failure: Exception) {
                 Utils.setLastError(failure.message ?: "VPN start failed")
                 if (waitNetwork) BootStatus.record(this@ProxyDroidVpnService, "Boot VPN failed: ${failure.message ?: "unknown error"}")
                 Utils.setWorking(false); Utils.setConnecting(false)
-                stopVpn(); stopForeground(STOP_FOREGROUND_REMOVE); stopSelf()
+                if (stopVpn()) { stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
             }
         }
         return START_STICKY
     }
 
+    /** Lives in the foreground VPN service, not the Activity: recovery works with UI closed. */
+    private suspend fun monitorAutoGateway(session: Long, initialSignature: String,
+                                          settings: android.content.SharedPreferences, profileId: String) {
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        val changes = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.CONFLATED)
+        val callback = object : android.net.ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: android.net.Network) { changes.trySend(Unit) }
+            override fun onLost(network: android.net.Network) { changes.trySend(Unit) }
+            override fun onLinkPropertiesChanged(network: android.net.Network, properties: android.net.LinkProperties) { changes.trySend(Unit) }
+        }
+        var registered = false
+        val policy = org.proxydroid.utils.GatewayRecoveryPolicy(initialSignature)
+        try {
+            runCatching {
+                cm.registerNetworkCallback(android.net.NetworkRequest.Builder()
+                    .addCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_VPN).build(), callback)
+                registered = true
+            }
+            changes.trySend(Unit)
+            while (true) {
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                // Callback driven; bounded fallback covers OEM missed callbacks/registration failure.
+                withTimeoutOrNull(5_000L) { changes.receive() }
+                delay(750)
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                if (generation.get() != session || stopping.get()) return
+                val physical = NetworkUtils.physicalGateway(this)
+                val action = policy.next(physical?.signature)
+                if (action == org.proxydroid.utils.GatewayRecoveryPolicy.Action.KEEP) continue
+                // Cancel the old watcher before intentionally ending its native root.
+                runtimeWatchJob?.cancel()
+                // Serialized cleanup MUST succeed before creating another TUN/native session.
+                val stopped = synchronized(lifecycleLock) {
+                    if (generation.get() != session || stopping.get()) return
+                    stopVpn()
+                }
+                check(stopped) { "Auto-gateway recovery blocked: previous VPN cleanup incomplete. Use Stop before reconnecting." }
+                Utils.setWorking(false); Utils.setConnecting(true)
+                if (action == org.proxydroid.utils.GatewayRecoveryPolicy.Action.WAIT) {
+                    Utils.recordVpnEvent("Physical network lost; auto-gateway waiting, old TUN/native closed")
+                    (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+                        .notify(NOTIFICATION_ID, createNotification("Waiting for local network / gateway"))
+                    continue
+                }
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                if (generation.get() != session || stopping.get()) return
+                host = physical!!.gateway
+                if (settings.getString("profile", "1") == profileId && settings.getBoolean("useGatewayAsHost", false)) {
+                    val current = Profile().apply { getProfile(settings); this.host = this@ProxyDroidVpnService.host }
+                    current.setProfile(settings); settings.edit().putString(profileId, current.toString()).apply()
+                }
+                Utils.recordVpnEvent("Physical network/gateway restored or changed; rebuild auto-gateway VPN")
+                // startVpn checks generation and Android consent again. No takeover after revoke.
+                startVpn(session)
+                check(Utils.isWorking()) { "Auto-gateway reconnect failed. Check proxy/Android VPN settings." }
+            }
+        } finally {
+            if (registered) runCatching { cm.unregisterNetworkCallback(callback) }
+            changes.close()
+        }
+    }
+
     override fun onDestroy() {
-        generation.incrementAndGet(); vpnJob?.cancel()
+        generation.incrementAndGet(); vpnJob?.cancel(); runtimeWatchJob?.cancel()
         stopVpn()
         super.onDestroy()
         Utils.setWorking(false)
@@ -192,7 +260,7 @@ class ProxyDroidVpnService : VpnService() {
     override fun onRevoke() {
         stopping.set(true)
         Utils.recordVpnEvent("Android revoked VPN ownership")
-        generation.incrementAndGet(); vpnJob?.cancel()
+        generation.incrementAndGet(); vpnJob?.cancel(); runtimeWatchJob?.cancel()
         stopVpn()
         Utils.setWorking(false); Utils.setConnecting(false)
         Utils.setLastError("VPN access revoked by Android (another VPN, system settings or always-on policy). Reconnect and confirm Android permission.")
@@ -306,14 +374,13 @@ class ProxyDroidVpnService : VpnService() {
             )
 
             if (!started) {
-                val msg = "Failed to start tun2socks (proxy $proxyType://$host:$port). " +
-                    "Check that the proxy is reachable from this network."
+                val msg = "Failed to start tun2socks: ${helper.lastStartFailure ?: "native reason unavailable"}. " +
+                    "Это отказ native-запуска, не доказательство недоступности прокси."
                 Log.e(TAG, msg)
                 Utils.setLastError(msg)
                 Utils.setConnecting(false)
                 Utils.setWorking(false)
-                stopVpn()
-                stopSelf()
+                if (stopVpn()) { stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
                 return@synchronized
             }
 
@@ -322,6 +389,7 @@ class ProxyDroidVpnService : VpnService() {
             Utils.setActiveRouting(org.proxydroid.utils.ActiveRouting(if (proxyApps.isNotBlank() && !isBypassApps) appliedAllowed.toSet() else null, appliedExcluded.toSet()))
             Utils.setActiveUpstream(ProxyEndpoint(host, port, proxyType, user.takeIf { it.isNotEmpty() }, password.takeIf { it.isNotEmpty() }))
             Utils.setWorking(true)
+            startRuntimeWatch(session)
             Utils.recordVpnEvent("VPN established; generation=$session" + if (Build.VERSION.SDK_INT >= 29) "; always-on=$isAlwaysOn; lockdown=$isLockdownEnabled" else "; always-on policy unavailable on this API")
             (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(NOTIFICATION_ID, createNotification())
             Log.i(TAG, "VPN established and tun2socks running")
@@ -331,8 +399,35 @@ class ProxyDroidVpnService : VpnService() {
             Utils.setLastError(msg)
             Utils.setConnecting(false)
             Utils.setWorking(false)
-            stopVpn()
-            stopSelf()
+            if (stopVpn()) { stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
+        }
+    }
+
+    private fun startRuntimeWatch(session: Long) {
+        runtimeWatchJob?.cancel()
+        runtimeWatchJob = serviceScope.launch {
+            while (true) {
+                delay(2000)
+                if (generation.get() != session || stopping.get()) return@launch
+                if (!Utils.isWorking()) continue // Auto-gateway waiting is intentional.
+                val health = tun2SocksHelper?.runtimeHealth() ?: continue
+                if (health.running && !health.taskFinished) continue
+                val watchContext = kotlinx.coroutines.currentCoroutineContext()
+                val stopped = synchronized(lifecycleLock) {
+                    watchContext.ensureActive()
+                    if (generation.get() != session || stopping.get() || !Utils.isWorking()) return@launch
+                    generation.incrementAndGet(); vpnJob?.cancel()
+                    stopVpn()
+                }
+                if (stopping.get() || generation.get() != session + 1) return@launch
+                Utils.setWorking(false); Utils.setConnecting(false)
+                Utils.recordVpnEvent("Native runtime ended; core exit=${health.coreExitCode}; cleanup=$stopped")
+                Utils.setLastError("Native VPN task ended (core=${health.coreExitCode}); tunnel closed, cleanup=$stopped. Это не отказ upstream-проверки. Сохраните отчёт и выполните Stop/переподключение.")
+                if (stopped) { stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
+                else (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+                    .notify(NOTIFICATION_ID, createNotification("Cleanup incomplete — use Stop"))
+                return@launch // Never an unbounded automatic reconnect/revoke loop.
+            }
         }
     }
 
