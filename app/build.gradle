@@ -75,15 +75,10 @@ android {
         }
     }
 
-    // Debug keeps the full regression suite. Release smoke tests deliberately
-    // reference manifest/JNI names rather than optimized application internals.
-    testBuildType project.findProperty('testBuildType') ?: 'debug'
-    sourceSets {
-        main { assets.srcDirs = ['src/main/runtime-assets'] }
-        if (project.findProperty('testBuildType') == 'release') {
-            androidTest { java.srcDirs = ['src/releaseSmoke/java'] }
-        }
-    }
+    // Signed optimized APK is smoke-tested by the isolated release-smoke
+    // module, which never adds keep rules or test dependencies to this APK.
+
+    sourceSets { main { assets.srcDirs = ['src/main/runtime-assets'] } }
 
     buildTypes {
         release {

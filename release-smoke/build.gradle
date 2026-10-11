@@ -1,0 +1,40 @@
+// Isolated test APK: app R8 must not retain unused libraries for its runner.
+plugins { id 'com.android.application' }
+android {
+    namespace 'org.proxydroid.release.smoke'
+    compileSdk 36
+    defaultConfig {
+        applicationId 'org.proxydroid.release.smoke'
+        minSdk 24
+        targetSdk 36
+        versionCode 1
+        versionName '1'
+    }
+    signingConfigs {
+        release {
+            def key = System.getenv('KEYSTORE_PATH')
+            if (key) {
+                storeFile file(key)
+                storePassword System.getenv('KEYSTORE_PASSWORD')
+                keyAlias System.getenv('KEY_ALIAS')
+                keyPassword System.getenv('KEY_PASSWORD')
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+}
+dependencies {
+    implementation libs.junit
+    implementation libs.androidx.test.junit
+    implementation libs.androidx.test.runner
+    implementation 'androidx.test:core:1.5.0'
+}

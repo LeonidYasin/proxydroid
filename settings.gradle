@@ -1,2 +1,5 @@
 include ':app'
 rootProject.name='proxydroid'
+
+// CI-only instrumentation APK; never published as an application release.
+include ":release-smoke"
