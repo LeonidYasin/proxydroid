@@ -37,8 +37,7 @@ class LanProxyCardTest {
         button.performKeyInput { pressKey(Key.DirectionCenter) }
         compose.runOnIdle { assertEquals(0, selections) }
         saveScreen("lan-proxy-confirm.png")
-        compose.onNodeWithText("Подключиться").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.RequestFocus)
-            .assertIsFocused().performKeyInput { pressKey(Key.DirectionCenter) }
+        compose.onNodeWithText("Подключиться").assertIsFocused().performKeyInput { pressKey(Key.DirectionCenter) }
         compose.runOnIdle { assertEquals(1, selections) }
     }
     @Test fun scanningHasCancellationAndUnknownPortsDoNotBecomeProxies() {

@@ -1,6 +1,7 @@
 package org.proxydroid.ui
 
 import android.content.Intent
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.relocation.BringIntoViewRequester
@@ -763,7 +764,16 @@ internal fun ConfirmDialog(
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
-        confirmButton = { TextButton(onClick = onConfirm, modifier = Modifier.tvRemoteFocus()) { Text(confirmText) } },
+        confirmButton = {
+            // Focus inside the dialog window, after the button has been placed.
+            val confirmFocus = remember { FocusRequester() }
+            var placed by remember { mutableStateOf(false) }
+            LaunchedEffect(placed) {
+                if (placed) { withFrameNanos { }; confirmFocus.requestFocus() }
+            }
+            TextButton(onClick = onConfirm, modifier = Modifier.focusRequester(confirmFocus)
+                .onGloballyPositioned { placed = true }.tvRemoteFocus()) { Text(confirmText) }
+        },
         dismissButton = { TextButton(onClick = onDismiss, modifier = Modifier.tvRemoteFocus()) { Text("Cancel") } },
     )
 }
