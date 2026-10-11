@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -66,10 +67,11 @@ fun ConnectionDiagnosticDialog(state: MainUiState, onCancel: () -> Unit, onDismi
     val scroll = rememberScrollState()
     val scope = rememberCoroutineScope()
     val focus = androidx.compose.runtime.remember { List(6) { androidx.compose.ui.focus.FocusRequester() } }
+    val placed = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateListOf(false, false, false, false, false, false) }
     val hasReport = state.diagnosticReport != null && !state.diagnosticRunning
     val bottomLeft = if (state.diagnosticRunning) 5 else if (hasReport) 3 else 0
     val bottomRight = if (state.diagnosticRunning) 5 else if (hasReport) 4 else 1
-    fun remote(index: Int): Modifier = Modifier.tvRemoteFocus().focusRequester(focus[index]).focusProperties {
+    fun remote(index: Int): Modifier = Modifier.tvRemoteFocus().focusRequester(focus[index]).onGloballyPositioned { placed[index] = true }.focusProperties {
         when (index) {
             0 -> { left = focus[2]; right = focus[1]; down = focus[bottomLeft]; up = focus[bottomLeft] }
             1 -> { left = focus[0]; right = focus[2]; down = focus[bottomRight]; up = focus[bottomRight] }
@@ -80,12 +82,12 @@ fun ConnectionDiagnosticDialog(state: MainUiState, onCancel: () -> Unit, onDismi
         }
     }
     val initial = if (state.diagnosticRunning) 5 else if (hasReport) 4 else 2
-    androidx.compose.runtime.LaunchedEffect(initial, sharedReport == null) {
-        if (sharedReport == null) { androidx.compose.runtime.withFrameNanos { }; focus[initial].requestFocus() }
-    }
     val maxHeight = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp - 48.dp).coerceAtLeast(200.dp)
     androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss,
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+        androidx.compose.runtime.LaunchedEffect(initial, placed[initial], sharedReport == null) {
+            if (placed[initial] && sharedReport == null) { androidx.compose.runtime.withFrameNanos { }; focus[initial].requestFocus() }
+        }
         androidx.compose.material3.Surface(
             modifier = Modifier.widthIn(max = 960.dp).fillMaxWidth(0.94f).heightIn(max = maxHeight).testTag("diagnostic-dialog"),
             shape = MaterialTheme.shapes.extraLarge, tonalElevation = 6.dp,

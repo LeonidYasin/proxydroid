@@ -13,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -34,7 +35,7 @@ fun DiagnosticShareDialog(report: String, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val owner = LocalLifecycleOwner.current
     val closeFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { withFrameNanos { }; closeFocus.requestFocus() }
+    var closePlaced by remember { mutableStateOf(false) }
     var server by remember { mutableStateOf<DiagnosticShareServer?>(null) }
     var image by remember { mutableStateOf<Bitmap?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -72,6 +73,7 @@ fun DiagnosticShareDialog(report: String, onDismiss: () -> Unit) {
     val height = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp - 48.dp).coerceAtLeast(200.dp)
     androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss,
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+        LaunchedEffect(closePlaced) { if (closePlaced) { withFrameNanos { }; closeFocus.requestFocus() } }
         Surface(Modifier.widthIn(max = 900.dp).fillMaxWidth(0.94f).heightIn(max = height).testTag("diagnostic-share-dialog"),
             shape = MaterialTheme.shapes.extraLarge, tonalElevation = 6.dp) {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -99,7 +101,7 @@ fun DiagnosticShareDialog(report: String, onDismiss: () -> Unit) {
                         }
                     }
                 }
-                TextButton(onClick = onDismiss, modifier = Modifier.tvRemoteFocus().focusRequester(closeFocus).fillMaxWidth().testTag("close-diagnostic-share")) { Text("Закрыть передачу") }
+                TextButton(onClick = onDismiss, modifier = Modifier.tvRemoteFocus().focusRequester(closeFocus).onGloballyPositioned { closePlaced = true }.fillMaxWidth().testTag("close-diagnostic-share")) { Text("Закрыть передачу") }
             }
         }
     }
