@@ -1,6 +1,8 @@
 package org.proxydroid.ui
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -18,11 +20,12 @@ fun LanProxyCard(state: MainUiState, onAuto: (Boolean) -> Unit, onScan: () -> Un
             Text("Прокси в локальной сети", style = MaterialTheme.typography.titleMedium)
             Text("Поиск SOCKS5 и HTTP CONNECT в текущей Wi-Fi/Ethernet-сети. Найденный протокол ещё не доказывает выход в интернет.",
                 style = MaterialTheme.typography.bodySmall)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+            Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).tvRemoteFocus().testTag("lan-auto")
+                .toggleable(state.lanAutoScan, role = Role.Switch, onValueChange = onAuto).padding(8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 Text("Автопоиск при открытии и смене сети", Modifier.weight(1f))
-                Switch(state.lanAutoScan, onCheckedChange = onAuto,
-                    modifier = Modifier.tvRemoteFocus().testTag("lan-auto"))
+                Switch(state.lanAutoScan, onCheckedChange = null)
             }
             Text("Только частные IPv4-адреса, до 256 узлов, популярные порты и текущий Port. Без отправки сохранённых паролей. Поиск останавливается при выходе из приложения.",
                 style = MaterialTheme.typography.bodySmall)

@@ -40,6 +40,24 @@ class LanProxyCardTest {
         compose.onNodeWithText("Подключиться").assertIsFocused().performKeyInput { pressKey(Key.DirectionCenter) }
         compose.runOnIdle { assertEquals(1, selections) }
     }
+    @Test fun autoSearchIsOneWholeRemoteToggleAndDoesNotChangeOnFocus() {
+        var toggles = 0
+        compose.setContent {
+            val mode = LocalInputModeManager.current
+            LaunchedEffect(Unit) { mode.requestInputMode(InputMode.Keyboard) }
+            androidx.compose.material3.MaterialTheme {
+                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                    LanProxyCard(MainUiState(), { toggles++ }, {}, {}, {})
+                }
+            }
+        }
+        val row = compose.onNodeWithTag("lan-auto")
+        row.performScrollTo().performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.RequestFocus)
+        row.assertIsFocused().assertIsDisplayed()
+        compose.runOnIdle { assertEquals(0, toggles) }
+        row.performKeyInput { pressKey(Key.DirectionCenter) }
+        compose.runOnIdle { assertEquals(1, toggles) }
+    }
     @Test fun scanningHasCancellationAndUnknownPortsDoNotBecomeProxies() {
         var cancelled = false
         compose.setContent { androidx.compose.material3.MaterialTheme {
