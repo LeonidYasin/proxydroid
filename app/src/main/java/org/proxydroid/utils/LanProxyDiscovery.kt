@@ -85,7 +85,7 @@ object LanProxyDiscovery {
                         bytes.write(b) }
                     error("Header limit")
                 }
-                val match = Regex("HTTP/1\.[01] ([0-9]{3})(?: .*|)").matchEntire(line()) ?: return null
+                val match = Regex("HTTP/1\\.[01] ([0-9]{3})(?: .*|)").matchEntire(line()) ?: return null
                 val status = match.groupValues[1].toInt()
                 if (status == 200) return LanProxy(host, port, "http", false)
                 if (status != 407) return null
