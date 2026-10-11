@@ -663,6 +663,7 @@ private fun AdvancedSection(
     }
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun ToggleRow(
     title: String,

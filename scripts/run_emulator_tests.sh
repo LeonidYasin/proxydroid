@@ -96,4 +96,6 @@ adb pull /data/local/tmp/diagnostic-dpad-report.png app/build/reports/androidTes
 adb pull /data/local/tmp/diagnostic-dpad-qr.png app/build/reports/androidTests/dpad-visual/diagnostic-dpad-qr.png
 adb pull /data/local/tmp/lan-proxy-results.png app/build/reports/androidTests/dpad-visual/lan-proxy-results.png
 adb pull /data/local/tmp/lan-proxy-confirm.png app/build/reports/androidTests/dpad-visual/lan-proxy-confirm.png
+adb pull /data/local/tmp/connection-focus-waiting.png app/build/reports/androidTests/dpad-visual/connection-focus-waiting.png
+adb pull /data/local/tmp/connection-focus-reconnected.png app/build/reports/androidTests/dpad-visual/connection-focus-reconnected.png
 echo "=== Emulator instrumentation tests passed ==="
