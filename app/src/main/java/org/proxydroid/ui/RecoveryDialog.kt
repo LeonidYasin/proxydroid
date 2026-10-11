@@ -2,6 +2,8 @@ package org.proxydroid.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -23,7 +25,7 @@ fun RecoveryDialog(busy: Boolean, onAction: (RecoveryAction) -> Unit, onVpnSetti
         return
     }
     AlertDialog(onDismissRequest = onDismiss, title = { Text("Восстановление соединения") }, text = {
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("Android допускает один VPN. Мы не выключаем чужие приложения принудительно: переключение выполняет Android после вашего согласия. Чужой always-on / блокировка без VPN могут помешать.", style = MaterialTheme.typography.bodySmall)
             RecoveryAction.values().forEach { action ->
                 TextButton(onClick = { confirmation = action }, enabled = !busy, modifier = Modifier.tvRemoteFocus()) { Text(action.label) }
