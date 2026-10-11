@@ -237,7 +237,8 @@ class MainViewModel @JvmOverloads constructor(app: Application,
                 if (showMissingError) _state.value = _state.value.copy(lastError = "No usable IPv4 default gateway on this network. Host was not changed.")
             } else {
                 updateProfile { host = gateway }
-                clearError()
+                // A gateway refresh is not proof of successful VPN cleanup/startup.
+                if (_state.value.lastError == "No usable IPv4 default gateway on this network. Host was not changed.") clearError()
             }
         }
     }
@@ -305,6 +306,10 @@ class MainViewModel @JvmOverloads constructor(app: Application,
     /** Save a NEW profile: never overwrite or send another proxy's saved credentials. */
     fun selectLanProxy(proxy: LanProxy): Boolean {
         if (proxy !in _state.value.lanProxies || recovering) return false
+        if (NetworkUtils.physicalGateway(getApplication())?.signature != lanSignature) {
+            reportConnectionError("Сеть поиска уже изменилась. Повторите поиск перед выбором прокси.")
+            return false
+        }
         persistCurrentProfileJson(_state.value.profile)
         gatewayJob?.cancel(); gatewayRequest++
         invalidateDiagnostics()

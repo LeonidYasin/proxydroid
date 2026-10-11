@@ -39,6 +39,16 @@ class GatewayStartupTest {
     @Test fun startupDetectsGatewayButPreservesManualHostWhenDisabled() = run(false) { _, vm ->
         assertEquals("192.168.50.1", vm.state.value.gatewayIp); assertEquals("old-host", vm.state.value.profile.host)
     }
+    @Test fun freshGatewayDoesNotHideVpnCleanupError() = run(true) { _, vm ->
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            vm.reportConnectionError("VPN cleanup incomplete: test failure")
+            vm.refreshGateway()
+        }
+        Thread.sleep(300)
+        assertEquals("VPN cleanup incomplete: test failure", vm.state.value.lastError)
+        instrumentation.runOnMainSync { vm.clearError() }
+    }
     @Test fun bootReceiverInvokesBackgroundStarterOnlyWhenEnabled() = run(false) { app, _ ->
         val prefs = PreferenceManager.getDefaultSharedPreferences(app)
         var starts = 0

@@ -456,7 +456,8 @@ private fun AutoGatewayCard(enabled: Boolean, onChange: (Boolean) -> Unit, gatew
                 title = "Use default gateway as proxy host",
                 subtitle = "Automatically use the current network's default gateway " +
                     "(e.g. the phone's hotspot address 192.168.43.1) as the upstream " +
-                    "proxy host, instead of the manually configured Host.",
+                    "proxy host, instead of the manually configured Host. " +
+                    "После потери сети активный auto-VPN ждёт новый шлюз и пересоздаётся даже при закрытом интерфейсе.",
                 checked = enabled,
                 onChange = onChange,
             )
