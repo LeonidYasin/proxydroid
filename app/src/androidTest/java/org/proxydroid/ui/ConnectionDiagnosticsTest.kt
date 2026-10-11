@@ -6,7 +6,9 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
+import androidx.compose.ui.input.key.Key
 
+@OptIn(ExperimentalTestApi::class)
 class ConnectionDiagnosticsTest {
     @get:Rule val compose = createComposeRule()
     @Test fun bothChecksAreSeparateAndAvailableWithoutStartingVpn() {
@@ -43,6 +45,38 @@ class ConnectionDiagnosticsTest {
         compose.onNodeWithText("Закрыть передачу").performClick()
         compose.onNodeWithTag("diagnostic-share-qr").assertDoesNotExist()
         compose.onNodeWithTag("copy-diagnostic-report").assertIsDisplayed()
+    }
+    @Test fun longReportAllFooterActionsReachableWithDpadOnly() {
+        val report = org.proxydroid.utils.DiagnosticReport(org.proxydroid.utils.DiagnosticKind.INTERNET, "test", (1..250).map { "Long diagnostic line $it" }, emptyList())
+        compose.setContent { MaterialTheme { ConnectionDiagnosticDialog(MainUiState(diagnosticVisible = true, diagnosticReport = report), {}, {}) } }
+        compose.onNodeWithTag("share-diagnostic-qr").assertIsFocused().assertIsDisplayed()
+        compose.onNodeWithTag("share-diagnostic-qr").performKeyInput { pressKey(Key.DirectionLeft) }
+        compose.onNodeWithTag("copy-diagnostic-report").assertIsFocused().assertIsDisplayed()
+        compose.onNodeWithTag("copy-diagnostic-report").performKeyInput { pressKey(Key.DirectionUp) }
+        compose.onNodeWithTag("scroll-diagnostic-up").assertIsFocused().assertIsDisplayed()
+        compose.onNodeWithTag("scroll-diagnostic-up").performKeyInput { pressKey(Key.DirectionRight) }
+        compose.onNodeWithTag("scroll-diagnostic-down").assertIsFocused().assertIsDisplayed()
+        compose.onNodeWithTag("scroll-diagnostic-down").performKeyInput { pressKey(Key.DirectionRight) }
+        compose.onNodeWithTag("close-diagnostic-report").assertIsFocused().assertIsDisplayed()
+        compose.onNodeWithTag("close-diagnostic-report").performKeyInput { pressKey(Key.DirectionDown) }
+        compose.onNodeWithTag("share-diagnostic-qr").assertIsFocused().assertIsDisplayed()
+        compose.onNodeWithTag("share-diagnostic-qr").performKeyInput { pressKey(Key.DirectionCenter) }
+        compose.waitUntil(10000) { compose.onAllNodesWithTag("diagnostic-share-qr").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("close-diagnostic-share").assertIsFocused().assertIsDisplayed()
+        compose.onNodeWithTag("close-diagnostic-share").performKeyInput { pressKey(Key.DirectionCenter) }
+        compose.onNodeWithTag("diagnostic-share-qr").assertDoesNotExist()
+        compose.onNodeWithTag("share-diagnostic-qr").assertIsFocused()
+    }
+    @Test fun footerNeverScrollsWithTheLongReport() {
+        val report = org.proxydroid.utils.DiagnosticReport(org.proxydroid.utils.DiagnosticKind.INTERNET, "test", (1..250).map { "Long diagnostic line $it" }, emptyList())
+        compose.setContent { MaterialTheme { ConnectionDiagnosticDialog(MainUiState(diagnosticVisible = true, diagnosticReport = report), {}, {}) } }
+        val before = compose.onNodeWithTag("diagnostic-actions").getUnclippedBoundsInRoot()
+        compose.onNodeWithTag("share-diagnostic-qr").performKeyInput { pressKey(Key.DirectionUp) }
+        compose.onNodeWithTag("scroll-diagnostic-down").performKeyInput { repeat(4) { pressKey(Key.DirectionCenter) } }
+        compose.waitForIdle()
+        assertEquals(before, compose.onNodeWithTag("diagnostic-actions").getUnclippedBoundsInRoot())
+        compose.onNodeWithTag("scroll-diagnostic-down").performKeyInput { pressKey(Key.DirectionDown) }
+        compose.onNodeWithTag("share-diagnostic-qr").assertIsFocused().assertIsDisplayed()
     }
     @Test fun busyButtonsDoNotLaunchDuplicateChecks() {
         compose.setContent { MaterialTheme { ConnectionDiagnostics(MainUiState(diagnosticRunning = true), {}, {}, {}) } }

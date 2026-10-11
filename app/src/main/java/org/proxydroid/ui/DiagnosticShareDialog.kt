@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -31,6 +33,8 @@ import java.net.Inet4Address
 fun DiagnosticShareDialog(report: String, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val owner = LocalLifecycleOwner.current
+    val closeFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { withFrameNanos { }; closeFocus.requestFocus() }
     var server by remember { mutableStateOf<DiagnosticShareServer?>(null) }
     var image by remember { mutableStateOf<Bitmap?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -71,5 +75,5 @@ fun DiagnosticShareDialog(report: String, onDismiss: () -> Unit) {
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             Text("Ссылка действует до 5 минут и закрывается вместе с этим окном. Это локальный HTTP, не шифрованная передача: используйте доверенную сеть. Отчёт содержит адреса сети/модель, но не пароль прокси. QR даёт доступ любому, кто его видит. Если не открывается — проверьте VPN телефона и изоляцию клиентов Wi-Fi.", style = MaterialTheme.typography.bodySmall)
         }
-    }, confirmButton = { TextButton(onClick = onDismiss, modifier = Modifier.tvRemoteFocus()) { Text("Закрыть передачу") } })
+    }, confirmButton = { TextButton(onClick = onDismiss, modifier = Modifier.tvRemoteFocus().focusRequester(closeFocus).testTag("close-diagnostic-share")) { Text("Закрыть передачу") } })
 }

@@ -6,7 +6,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -52,7 +55,7 @@ internal fun ConnectionDiagnostics(state: MainUiState, onInternet: () -> Unit, o
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Fixed action panel: report text never competes with buttons for DPAD focus. */
 @Composable
 fun ConnectionDiagnosticDialog(state: MainUiState, onCancel: () -> Unit, onDismiss: () -> Unit) {
     if (!state.diagnosticVisible) return
@@ -62,32 +65,59 @@ fun ConnectionDiagnosticDialog(state: MainUiState, onCancel: () -> Unit, onDismi
     val clipboard = LocalClipboardManager.current
     val scroll = rememberScrollState()
     val scope = rememberCoroutineScope()
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Подробная диагностика") },
-        text = {
-            Column(Modifier.verticalScroll(scroll).testTag("diagnostic-report"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (state.diagnosticRunning) {
-                    LinearProgressIndicator(Modifier.fillMaxWidth())
-                    Text(state.diagnosticProgress ?: "Проверка…")
-                    Text("До 65 секунд для сетевых этапов; системный DNS может завершаться позже. Закрытие/отмена закрывает сокеты. Прямые контрольные запросы явно отделены от прокси.", style = MaterialTheme.typography.bodySmall)
+    val focus = androidx.compose.runtime.remember { List(6) { androidx.compose.ui.focus.FocusRequester() } }
+    val hasReport = state.diagnosticReport != null && !state.diagnosticRunning
+    val bottomLeft = if (state.diagnosticRunning) 5 else if (hasReport) 3 else 0
+    val bottomRight = if (state.diagnosticRunning) 5 else if (hasReport) 4 else 1
+    fun remote(index: Int): Modifier = Modifier.tvRemoteFocus().focusRequester(focus[index]).focusProperties {
+        when (index) {
+            0 -> { left = focus[2]; right = focus[1]; down = focus[bottomLeft]; up = focus[bottomLeft] }
+            1 -> { left = focus[0]; right = focus[2]; down = focus[bottomRight]; up = focus[bottomRight] }
+            2 -> { left = focus[1]; right = focus[0]; down = focus[bottomRight]; up = focus[bottomRight] }
+            3 -> { left = focus[4]; right = focus[4]; up = focus[0]; down = focus[0] }
+            4 -> { left = focus[3]; right = focus[3]; up = focus[1]; down = focus[1] }
+            5 -> { left = focus[5]; right = focus[5]; up = focus[1]; down = focus[1] }
+        }
+    }
+    val initial = if (state.diagnosticRunning) 5 else if (hasReport) 4 else 2
+    androidx.compose.runtime.LaunchedEffect(initial, sharedReport == null) {
+        if (sharedReport == null) { androidx.compose.runtime.withFrameNanos { }; focus[initial].requestFocus() }
+    }
+    val maxHeight = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp - 48.dp).coerceAtLeast(200.dp)
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+        androidx.compose.material3.Surface(
+            modifier = Modifier.widthIn(max = 960.dp).fillMaxWidth(0.94f).heightIn(max = maxHeight).testTag("diagnostic-dialog"),
+            shape = MaterialTheme.shapes.extraLarge, tonalElevation = 6.dp,
+        ) {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Подробная диагностика", style = MaterialTheme.typography.titleLarge)
+                Column(Modifier.weight(1f).fillMaxWidth().focusProperties { canFocus = false }
+                    .verticalScroll(scroll).testTag("diagnostic-report"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (state.diagnosticRunning) {
+                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                        Text(state.diagnosticProgress ?: "Проверка…")
+                        Text("До 65 секунд для сетевых этапов; системный DNS может завершаться позже. Отмена закрывает сокеты. Прямые контрольные запросы явно отделены от прокси.", style = MaterialTheme.typography.bodySmall)
+                    }
+                    state.diagnosticError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    state.diagnosticReport?.let { Text(it.text(), style = MaterialTheme.typography.bodySmall) }
+                    if (!state.diagnosticRunning && state.diagnosticReport == null) Text(state.diagnosticProgress ?: "Результата ещё нет.")
                 }
-                state.diagnosticError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                state.diagnosticReport?.let { report -> SelectionContainer { Text(report.text(), style = MaterialTheme.typography.bodySmall) } }
-                if (!state.diagnosticRunning && state.diagnosticReport == null) Text(state.diagnosticProgress ?: "Результата ещё нет.")
+                Column(Modifier.fillMaxWidth().testTag("diagnostic-actions"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        TextButton(onClick = { scope.launch { scroll.animateScrollTo((scroll.value - 400).coerceAtLeast(0)) } }, modifier = Modifier.weight(1f).then(remote(0)).testTag("scroll-diagnostic-up")) { Text("↑ Вверх") }
+                        TextButton(onClick = { scope.launch { scroll.animateScrollTo((scroll.value + 400).coerceAtMost(scroll.maxValue)) } }, modifier = Modifier.weight(1f).then(remote(1)).testTag("scroll-diagnostic-down")) { Text("↓ Вниз") }
+                        TextButton(onClick = onDismiss, modifier = Modifier.weight(1f).then(remote(2)).testTag("close-diagnostic-report")) { Text("Закрыть") }
+                    }
+                    if (state.diagnosticRunning) TextButton(onClick = onCancel, modifier = remote(5).fillMaxWidth().testTag("cancel-diagnostic-report")) { Text("Отменить проверку") }
+                    else state.diagnosticReport?.let { report ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            TextButton(onClick = { clipboard.setText(AnnotatedString(report.text())) }, modifier = Modifier.weight(1f).then(remote(3)).testTag("copy-diagnostic-report")) { Text("Скопировать отчёт") }
+                            TextButton(onClick = { sharedReport = report.text() }, modifier = Modifier.weight(1f).then(remote(4)).testTag("share-diagnostic-qr")) { Text("На смартфон · QR") }
+                        }
+                    }
+                }
             }
-        },
-        confirmButton = { Column {
-            Row {
-                TextButton(onClick = { scope.launch { scroll.animateScrollTo((scroll.value - 400).coerceAtLeast(0)) } }, modifier = Modifier.tvRemoteFocus().testTag("scroll-diagnostic-up")) { Text("↑ Вверх") }
-                TextButton(onClick = { scope.launch { scroll.animateScrollTo((scroll.value + 400).coerceAtMost(scroll.maxValue)) } }, modifier = Modifier.tvRemoteFocus().testTag("scroll-diagnostic-down")) { Text("↓ Вниз") }
-            }
-            if (state.diagnosticRunning) TextButton(onClick = onCancel, modifier = Modifier.tvRemoteFocus()) { Text("Отменить проверку") }
-            else state.diagnosticReport?.let { report ->
-                TextButton(onClick = { clipboard.setText(AnnotatedString(report.text())) }, modifier = Modifier.tvRemoteFocus().testTag("copy-diagnostic-report")) { Text("Скопировать отчёт") }
-                TextButton(onClick = { sharedReport = report.text() }, modifier = Modifier.tvRemoteFocus().testTag("share-diagnostic-qr")) { Text("На смартфон · QR") }
-            }
-        } },
-        dismissButton = { TextButton(onClick = onDismiss, modifier = Modifier.tvRemoteFocus()) { Text("Закрыть") } },
-    )
+        }
+    }
 }
