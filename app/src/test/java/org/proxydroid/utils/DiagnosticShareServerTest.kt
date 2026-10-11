@@ -29,6 +29,14 @@ class DiagnosticShareServerTest {
         assertThrows(Exception::class.java) { request(server.url) }
         server.close()
     }
+    @Test fun versionedFilenameIsSafeAndDoesNotReadFiles() {
+        DiagnosticShareServer(InetAddress.getByName("127.0.0.1") as Inet4Address, "report", filename = "LocProxyTV-v3.8.9-diagnostics-20261011-161155.txt").use { server ->
+            assertTrue(request(server.url).contains("filename=LocProxyTV-v3.8.9-diagnostics-20261011-161155.txt"))
+        }
+        for (bad in listOf("../secret.txt", "x\r\nInjected: yes", ".hidden", "x".repeat(101))) {
+            assertThrows(IllegalArgumentException::class.java) { DiagnosticShareServer(InetAddress.getByName("127.0.0.1") as Inet4Address, "report", filename = bad) }
+        }
+    }
     @Test fun reportSizeBounded() {
         assertThrows(IllegalArgumentException::class.java) {
             DiagnosticShareServer(InetAddress.getByName("127.0.0.1") as Inet4Address, "x".repeat(524289))

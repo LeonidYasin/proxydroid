@@ -92,6 +92,7 @@ fun ConnectionDiagnosticDialog(state: MainUiState, onCancel: () -> Unit, onDismi
         ) {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Подробная диагностика", style = MaterialTheme.typography.titleLarge)
+                Text("Установлено: v${org.proxydroid.BuildConfig.VERSION_NAME} · build ${org.proxydroid.BuildConfig.BUILD_RUN_ID}", style = MaterialTheme.typography.bodySmall)
                 Column(Modifier.weight(1f).fillMaxWidth().focusProperties { canFocus = false }
                     .verticalScroll(scroll).testTag("diagnostic-report"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (state.diagnosticRunning) {

@@ -52,7 +52,9 @@ fun DiagnosticShareDialog(report: String, onDismiss: () -> Unit) {
             val network = DeviceDiagnostics.physicalNetwork(context) ?: error("Нет физической сети")
             val address = cm.getLinkProperties(network)?.linkAddresses?.map { it.address }?.filterIsInstance<Inet4Address>()?.firstOrNull { !it.isLoopbackAddress }
                 ?: error("Нет IPv4-адреса локальной сети")
-            withContext(Dispatchers.IO) { local = DiagnosticShareServer(address, report) }
+            val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.ROOT).format(java.util.Date())
+            val filename = "LocProxyTV-v${org.proxydroid.BuildConfig.VERSION_NAME}-diagnostics-$stamp.txt"
+            withContext(Dispatchers.IO) { local = DiagnosticShareServer(address, report, filename = filename) }
             val sharing = checkNotNull(local)
             server = local
             val url = sharing.url

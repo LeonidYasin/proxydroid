@@ -10,7 +10,8 @@ import java.security.SecureRandom
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** Explicit, short-lived LAN download. No filesystem access, cloud upload or credentials. */
-class DiagnosticShareServer(address: Inet4Address, report: String, private val lifetimeMs: Long = 300_000L) : Closeable {
+class DiagnosticShareServer(address: Inet4Address, report: String, private val lifetimeMs: Long = 300_000L, filename: String = "LocProxyTV-diagnostics.txt") : Closeable {
+    private val downloadName = filename.also { require(it.matches(Regex("[A-Za-z0-9._-]{1,100}")) && !it.startsWith(".") && !it.contains("..")) { "Invalid download filename" } }
     private val validLifetime = lifetimeMs.also { require(it in 1..300_000L) }
     private val content = report.toByteArray(Charsets.UTF_8).also { require(it.size <= 512 * 1024) { "Report too large" } }
     private val token = ByteArray(24).also { SecureRandom().nextBytes(it) }.joinToString("") { "%02x".format(it.toInt() and 255) }
@@ -52,7 +53,7 @@ class DiagnosticShareServer(address: Inet4Address, report: String, private val l
             MessageDigest.isEqual(request[1].toByteArray(Charsets.US_ASCII), path.toByteArray(Charsets.US_ASCII))
         val body = if (authorized) content else "Not found\n".toByteArray(Charsets.UTF_8)
         val status = if (authorized) "200 OK" else "404 Not Found"
-        val response = "HTTP/1.1 $status\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: ${body.size}\r\nContent-Disposition: attachment; filename=LocProxyTV-diagnostics.txt\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n"
+        val response = "HTTP/1.1 $status\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: ${body.size}\r\nContent-Disposition: attachment; filename=$downloadName\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n"
         socket.getOutputStream().apply { write(response.toByteArray(Charsets.US_ASCII)); write(body); flush() }
     }
     override fun close() {
