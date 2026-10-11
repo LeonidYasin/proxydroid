@@ -7,7 +7,8 @@ ROOT = Path(__file__).resolve().parents[1]
 ANDROID = '{http://schemas.android.com/apk/res/android}'
 manifest = ET.parse(ROOT / 'app/src/main/AndroidManifest.xml').getroot()
 app = manifest.find('application')
-assert app.get(ANDROID + 'banner') == '@drawable/tv_banner'
+assert app.get(ANDROID + 'banner') == '@drawable/locproxy_tv_banner'
+assert app.get(ANDROID + 'icon') == '@mipmap/locproxy_launcher'
 features = {x.get(ANDROID + 'name'): x.get(ANDROID + 'required') for x in manifest.findall('uses-feature')}
 assert features['android.software.leanback'] == 'false'
 assert features['android.hardware.touchscreen'] == 'false'
@@ -15,7 +16,7 @@ activity = next(x for x in app.findall('activity') if x.get(ANDROID + 'name') ==
 categories = {x.get(ANDROID + 'name') for x in activity.findall('intent-filter/category')}
 assert 'android.intent.category.LAUNCHER' in categories
 assert 'android.intent.category.LEANBACK_LAUNCHER' in categories
-ET.parse(ROOT / 'app/src/main/res/drawable/tv_banner.xml')
+ET.parse(ROOT / 'app/src/main/res/drawable/locproxy_tv_banner.xml')
 screen = (ROOT / 'app/src/main/java/org/proxydroid/ui/MainScreen.kt').read_text()
 body = screen[screen.index('            ConnectionCard(state'):screen.index('            AutoStartOnBootCard(')]
 assert body.index('ConnectionCard(') < body.index('AutoGatewayCard(') < body.index('ProxyEndpointCard(') < body.index('ProfileCard(') < body.index('ProxyForm(')
@@ -73,3 +74,9 @@ assert 'bindSocket(socket)' in device and 'ACTUAL routing' in device
 assert 'testTag("check-proxy-internet")' in ui and 'testTag("check-youtube-proxy")' in ui
 assert 'diagnosticRequest' in vm and 'copy(stale = true)' in vm
 print('PASS: staged/auth/DoH diagnostics, separate direct reference, actual route, cancellation and two buttons')
+
+assert 'testTag("connection-row")' in screen and 'onCheckedChange = null' in screen
+assert 'toggleable(value = on' in screen
+focus = (ROOT / "app/src/main/java/org/proxydroid/ui/TvRemoteFocus.kt").read_text()
+assert "reveal.bringIntoView()" in focus and "Stroke(stroke)" in focus
+print("PASS: unique LocProxyTV launcher/banner, whole-row toggle and full-control focus reveal")

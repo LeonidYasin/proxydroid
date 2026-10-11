@@ -2,7 +2,7 @@
 
 VPN-клиент, направляющий IPv4/TCP-трафик выбранных приложений через ваш SOCKS/HTTP-прокси. Root не требуется. Интерфейс Jetpack Compose поддерживает пульт/DPAD и телефоны.
 
-> Разрабатываемая версия ветки: **3.8.5**. Это не означает, что изменения уже в `main` или стабильном релизе. Готовые APK и точный коммит смотрите в [Releases](https://github.com/LeonidYasin/proxydroid/releases); изменения проходят [PR #12](https://github.com/LeonidYasin/proxydroid/pull/12). Статус CI: [Actions](https://github.com/LeonidYasin/proxydroid/actions).
+> Разрабатываемая версия ветки: **3.8.6**. Это не означает, что изменения уже в `main` или стабильном релизе. Готовые APK и точный коммит смотрите в [Releases](https://github.com/LeonidYasin/proxydroid/releases); изменения проходят [PR #12](https://github.com/LeonidYasin/proxydroid/pull/12). Статус CI: [Actions](https://github.com/LeonidYasin/proxydroid/actions).
 
 [Сайт проекта / документация](https://leonidyasin.github.io/proxydroid/) · [Скачать APK](https://github.com/LeonidYasin/proxydroid/releases)
 

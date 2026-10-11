@@ -22,3 +22,23 @@ timeout --signal=TERM --kill-after=15s 180s adb shell am instrument -w \
 # am instrument can exit 0 after a runner crash. Require all three tests.
 grep -Eq '^OK \(3 tests\)' app/build/reports/release-smoke/instrumentation.txt
 ! grep -Eq 'FAILURES|INSTRUMENTATION_FAILED|Process crashed' app/build/reports/release-smoke/instrumentation.txt
+
+# Visual QA captures from the actual signed minified target, not a mockup.
+adb shell wm size 1280x720
+adb shell wm density 160
+adb shell cmd uimode night yes
+adb shell am force-stop org.proxydroid
+adb shell am start -W -n org.proxydroid/.ProxyDroid
+sleep 2
+adb exec-out screencap -p > app/build/reports/release-smoke/tv-initial-focus.png
+for i in $(seq 1 14); do adb shell input keyevent 20; done
+for i in $(seq 1 14); do adb shell input keyevent 19; done
+sleep 2
+adb exec-out screencap -p > app/build/reports/release-smoke/tv-dpad-return.png
+adb shell wm size 720x1280
+adb shell wm density 320
+adb shell cmd uimode night no
+adb shell am force-stop org.proxydroid
+adb shell am start -W -n org.proxydroid/.ProxyDroid
+sleep 2
+adb exec-out screencap -p > app/build/reports/release-smoke/phone-layout.png

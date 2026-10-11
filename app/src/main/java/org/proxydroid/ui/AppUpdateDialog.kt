@@ -43,7 +43,7 @@ fun AppUpdateDialog(
                     UpdateChannel.values().forEach { channel ->
                         FilterChip(selected = state.channel == channel,
                             onClick = { onChannel(channel) }, enabled = !busy,
-                            label = { Text(channel.label) })
+                            label = { Text(channel.label) }, modifier = Modifier.tvRemoteFocus())
                     }
                 }
                 if (state.checking) { Text("Checking releases…"); LinearProgressIndicator(Modifier.fillMaxWidth()) }
@@ -83,13 +83,13 @@ fun AppUpdateDialog(
         confirmButton = {
             if (!busy) {
                 when {
-                    state.file != null -> TextButton(onClick = onInstall) { Text("Install") }
-                    state.build != null -> TextButton(onClick = onDownload) { Text(if (state.downloadBytes > 0) "Resume download / verify" else "Download APK") }
-                    else -> TextButton(onClick = onCheck) { Text("Check latest") }
+                    state.file != null -> TextButton(onClick = onInstall, modifier = Modifier.tvRemoteFocus()) { Text("Install") }
+                    state.build != null -> TextButton(onClick = onDownload, modifier = Modifier.tvRemoteFocus()) { Text(if (state.downloadBytes > 0) "Resume download / verify" else "Download APK") }
+                    else -> TextButton(onClick = onCheck, modifier = Modifier.tvRemoteFocus()) { Text("Check latest") }
                 }
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(if (state.downloading) "Pause / close" else if (busy) "Cancel" else "Close") } },
+        dismissButton = { TextButton(onClick = onDismiss, modifier = Modifier.tvRemoteFocus()) { Text(if (state.downloading) "Pause / close" else if (busy) "Cancel" else "Close") } },
     )
 }
 
@@ -99,7 +99,7 @@ internal fun DownloadedApkLink(path: String, enabled: Boolean, onInstall: () -> 
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text("Downloaded APK — select the path to install", style = MaterialTheme.typography.bodySmall)
         TextButton(onClick = onInstall, enabled = enabled,
-            modifier = Modifier.fillMaxWidth().testTag("downloaded-apk-path")) {
+            modifier = Modifier.fillMaxWidth().tvRemoteFocus().testTag("downloaded-apk-path")) {
             Text(path, style = MaterialTheme.typography.bodySmall, softWrap = true)
         }
         Text("Private app cache; other file managers cannot access this path. Installation uses a secure content URI.", style = MaterialTheme.typography.bodySmall)

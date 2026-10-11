@@ -31,10 +31,10 @@ internal fun ConnectionDiagnostics(state: MainUiState, onInternet: () -> Unit, o
             Text("Диагностика соединения", style = MaterialTheme.typography.titleMedium)
             Text("TCP-порт ≠ рабочий прокси ≠ интернет ≠ видео YouTube", style = MaterialTheme.typography.bodySmall)
             Text("Есть отдельные прямые HTTPS-контрольные запросы без прокси; их успех не засчитывается прокси.", style = MaterialTheme.typography.bodySmall)
-            TextButton(onClick = onInternet, enabled = !state.diagnosticRunning, modifier = Modifier.testTag("check-proxy-internet")) {
+            TextButton(onClick = onInternet, enabled = !state.diagnosticRunning, modifier = Modifier.tvRemoteFocus().testTag("check-proxy-internet")) {
                 Text("Проверить прокси / интернет")
             }
-            TextButton(onClick = onYouTube, enabled = !state.diagnosticRunning, modifier = Modifier.testTag("check-youtube-proxy")) {
+            TextButton(onClick = onYouTube, enabled = !state.diagnosticRunning, modifier = Modifier.tvRemoteFocus().testTag("check-youtube-proxy")) {
                 Text("Проверить YouTube через прокси")
             }
             if (state.diagnosticRunning) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text(state.diagnosticProgress ?: "Проверка…", style = MaterialTheme.typography.bodySmall) }
@@ -43,7 +43,7 @@ internal fun ConnectionDiagnostics(state: MainUiState, onInternet: () -> Unit, o
                 Text("${if (report.stale) "Устаревший результат — повторите проверку. " else ""}Через прокси: ${proxy.count { it.success }} / ${proxy.size} целей прошли", style = MaterialTheme.typography.bodySmall)
             }
             if (state.diagnosticReport != null || state.diagnosticRunning || state.diagnosticError != null) {
-                TextButton(onClick = onShowReport, modifier = Modifier.testTag("show-diagnostic-report")) { Text("Этапы, причины и что проверить дальше") }
+                TextButton(onClick = onShowReport, modifier = Modifier.tvRemoteFocus().testTag("show-diagnostic-report")) { Text("Этапы, причины и что проверить дальше") }
             }
             if (!state.isWorking) Text("VPN выключен: проверяем настроенный прокси, не TUN. Подключение автоматически не включается.", style = MaterialTheme.typography.bodySmall)
         }
@@ -74,14 +74,14 @@ fun ConnectionDiagnosticDialog(state: MainUiState, onCancel: () -> Unit, onDismi
         },
         confirmButton = { Column {
             Row {
-                TextButton(onClick = { scope.launch { scroll.animateScrollTo((scroll.value - 400).coerceAtLeast(0)) } }, modifier = Modifier.testTag("scroll-diagnostic-up")) { Text("↑ Вверх") }
-                TextButton(onClick = { scope.launch { scroll.animateScrollTo((scroll.value + 400).coerceAtMost(scroll.maxValue)) } }, modifier = Modifier.testTag("scroll-diagnostic-down")) { Text("↓ Вниз") }
+                TextButton(onClick = { scope.launch { scroll.animateScrollTo((scroll.value - 400).coerceAtLeast(0)) } }, modifier = Modifier.tvRemoteFocus().testTag("scroll-diagnostic-up")) { Text("↑ Вверх") }
+                TextButton(onClick = { scope.launch { scroll.animateScrollTo((scroll.value + 400).coerceAtMost(scroll.maxValue)) } }, modifier = Modifier.tvRemoteFocus().testTag("scroll-diagnostic-down")) { Text("↓ Вниз") }
             }
-            if (state.diagnosticRunning) TextButton(onClick = onCancel) { Text("Отменить проверку") }
+            if (state.diagnosticRunning) TextButton(onClick = onCancel, modifier = Modifier.tvRemoteFocus()) { Text("Отменить проверку") }
             else state.diagnosticReport?.let { report ->
-                TextButton(onClick = { clipboard.setText(AnnotatedString(report.text())) }, modifier = Modifier.testTag("copy-diagnostic-report")) { Text("Скопировать отчёт") }
+                TextButton(onClick = { clipboard.setText(AnnotatedString(report.text())) }, modifier = Modifier.tvRemoteFocus().testTag("copy-diagnostic-report")) { Text("Скопировать отчёт") }
             }
         } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Закрыть") } },
+        dismissButton = { TextButton(onClick = onDismiss, modifier = Modifier.tvRemoteFocus()) { Text("Закрыть") } },
     )
 }

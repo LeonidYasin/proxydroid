@@ -31,14 +31,17 @@
     <application
         android:name=".ProxyDroidApplication"
         android:allowBackup="false"
-        android:icon="@drawable/ic_launcher"
-        android:banner="@drawable/tv_banner"
+        android:icon="@mipmap/locproxy_launcher"
+        android:roundIcon="@mipmap/locproxy_launcher"
+        android:banner="@drawable/locproxy_tv_banner"
         android:label="@string/app_name"
         android:theme="@style/Theme.ProxyDroid"
         android:usesCleartextTraffic="true">
 
         <activity
             android:name="ProxyDroid"
+            android:icon="@mipmap/locproxy_launcher"
+            android:banner="@drawable/locproxy_tv_banner"
             android:label="@string/app_name"
             android:theme="@style/Theme.ProxyDroid"
             android:exported="true">

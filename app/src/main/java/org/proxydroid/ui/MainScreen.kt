@@ -7,6 +7,8 @@ import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.foundation.background
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -58,6 +60,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -122,6 +125,7 @@ fun MainScreen(
         topBar = {
             TopAppBar(
                 modifier = Modifier.testTag("app-top-bar"),
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
                 title = {
                     Column {
                         Text(stringRes(R.string.app_name), maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -133,7 +137,7 @@ fun MainScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { menuOpen = true }) {
+                    IconButton(onClick = { menuOpen = true }, modifier = Modifier.tvRemoteFocus()) {
                         Icon(Icons.Default.MoreVert, contentDescription = "More")
                     }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
@@ -261,54 +265,38 @@ private fun ConnectionCard(
         modifier = Modifier.fillMaxWidth().testTag("connection-card"),
     ) {
         Row(
-            modifier = Modifier
-                .padding(20.dp)
-                .fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 84.dp)
+                .focusRequester(focusRequester)
+                .tvRemoteFocus().testTag("connection-row")
+                .toggleable(value = on, enabled = !state.isConnecting,
+                    role = Role.Switch, onValueChange = onToggle)
+                .padding(20.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                modifier = Modifier
-                    .size(14.dp)
-                    .background(
-                        if (on) Color(0xFF2BAA63) else Color(0xFF9E9E9E),
-                        CircleShape,
-                    ),
-            )
+            Box(Modifier.size(14.dp).background(
+                if (on) Color(0xFF2BAA63) else MaterialTheme.colorScheme.outline,
+                CircleShape))
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Text(
-                    if (on) "Connected" else "Disconnected",
+                Text(if (on) "Connected" else "Disconnected",
                     style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    secondaryStatus(state),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                // Gateway/connection errors must also be visible before connecting.
+                    fontWeight = FontWeight.SemiBold)
+                Text(secondaryStatus(state), style = MaterialTheme.typography.bodyMedium)
                 if (!on) state.lastError?.let { error ->
                     Text(error, style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error)
                 }
-                // Liveness indicator: only meaningful while the tunnel is up.
-                if (on) {
-                    Spacer(Modifier.height(4.dp))
-                    LivenessIndicator(state = state, onCheckAlive = onCheckAlive)
-                    InternetActions(state, onOpenYouTube, onDiagnostics)
-                }
             }
-            if (state.isConnecting) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(28.dp),
-                    strokeWidth = 3.dp,
-                )
-            }
-            Switch(
-                checked = on,
-                onCheckedChange = onToggle,
-                enabled = !state.isConnecting,
-                modifier = Modifier.focusRequester(focusRequester).testTag("connection-toggle"),
-            )
+            if (state.isConnecting) CircularProgressIndicator(
+                modifier = Modifier.size(28.dp), strokeWidth = 3.dp)
+            // Passive visual indicator: the entire row is the only toggle/focus
+            // target. This prevents clipped labels when returning with DPAD.
+            Switch(checked = on, onCheckedChange = null, enabled = !state.isConnecting,
+                modifier = Modifier.testTag("connection-toggle"))
+        }
+        if (on) Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 16.dp)) {
+            LivenessIndicator(state, onCheckAlive)
+            InternetActions(state, onOpenYouTube, onDiagnostics)
         }
     }
 }
@@ -329,7 +317,7 @@ internal fun InternetActions(state: MainUiState, onOpenYouTube: () -> Unit, onRe
         state.internetAvailable == true -> {
             Text("HTTPS test succeeded through proxy — not a full VPN or video test", style = MaterialTheme.typography.bodySmall)
             TextButton(onClick = onOpenYouTube, modifier = Modifier
-                .bringIntoViewRequester(youtubeView)
+                .tvRemoteFocus().bringIntoViewRequester(youtubeView)
                 .focusRequester(youtubeFocus).testTag("open-youtube")) { Text("Open YouTube") }
             // First verified success per connection: show the action and hand off
             // the remote focus. Retry/poll updates must not repeatedly steal it.
@@ -346,7 +334,7 @@ internal fun InternetActions(state: MainUiState, onOpenYouTube: () -> Unit, onRe
         state.internetAvailable == false -> {
             Text("Internet through proxy could not be verified", color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodySmall)
-            TextButton(onClick = onRetry) { Text("Retry internet check") }
+            TextButton(onClick = onRetry, modifier = Modifier.tvRemoteFocus()) { Text("Retry internet check") }
         }
     }
 }
@@ -382,6 +370,7 @@ private fun LivenessIndicator(state: MainUiState, onCheckAlive: () -> Unit) {
             Spacer(Modifier.width(8.dp))
             TextButton(
                 onClick = onCheckAlive,
+                modifier = Modifier.tvRemoteFocus(),
                 contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
             ) {
                 Text("TCP check", style = MaterialTheme.typography.bodySmall)
@@ -424,37 +413,23 @@ private fun ProfileCard(
             Text("Profile", style = MaterialTheme.typography.labelLarge)
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                ExposedDropdownMenuBox(
-                    expanded = expanded,
-                    onExpandedChange = { expanded = !expanded },
-                    modifier = Modifier.weight(1f),
-                ) {
-                    OutlinedTextField(
-                        value = current.name,
-                        onValueChange = {},
-                        readOnly = true,
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
-                        modifier = Modifier
-                            .menuAnchor()
-                            .fillMaxWidth(),
-                    )
-                    DropdownMenu(
-                        expanded = expanded,
-                        onDismissRequest = { expanded = false },
-                    ) {
+                Box(Modifier.weight(1f)) {
+                    OutlinedButton(onClick = { expanded = !expanded },
+                        modifier = Modifier.fillMaxWidth().tvRemoteFocus().testTag("select-profile")) {
+                        Text(current.name, modifier = Modifier.weight(1f), maxLines = 1,
+                            overflow = TextOverflow.Ellipsis)
+                        Icon(Icons.Default.ExpandMore, contentDescription = "Select profile")
+                    }
+                    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                         state.profiles.forEach { p ->
                             DropdownMenuItem(
-                                text = { Text(p.name) },
-                                onClick = {
-                                    expanded = false
-                                    onSelectProfile(p.id)
-                                },
-                            )
+                                text = { Text(p.name) }, modifier = Modifier.tvRemoteFocus(),
+                                onClick = { expanded = false; onSelectProfile(p.id) })
                         }
                     }
                 }
                 Spacer(Modifier.width(8.dp))
-                IconButton(onClick = onNewProfile) {
+                IconButton(onClick = onNewProfile, modifier = Modifier.tvRemoteFocus()) {
                     Icon(Icons.Default.Add, contentDescription = "New profile")
                 }
             }
@@ -549,7 +524,7 @@ private fun ProxyForm(profile: Profile, edit: (Profile.() -> Unit) -> Unit) {
                         selected = profile.proxyType == t,
                         onClick = { edit { proxyType = t } },
                         label = { Text(t.uppercase()) },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).tvRemoteFocus(),
                     )
                 }
             }
@@ -615,7 +590,7 @@ private fun AdvancedSection(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("Advanced", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                IconButton(onClick = onToggle) {
+                IconButton(onClick = onToggle, modifier = Modifier.tvRemoteFocus()) {
                     Icon(
                         if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                         contentDescription = if (expanded) "Collapse" else "Expand",
@@ -697,7 +672,10 @@ private fun ToggleRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 48.dp),
+            .heightIn(min = 56.dp)
+            .tvRemoteFocus()
+            .toggleable(checked, role = Role.Switch, onValueChange = onChange)
+            .padding(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
@@ -708,7 +686,7 @@ private fun ToggleRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Switch(checked = checked, onCheckedChange = onChange)
+        Switch(checked = checked, onCheckedChange = null)
     }
 }
 
@@ -736,7 +714,7 @@ private fun LinkRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        TextButton(onClick = { ctx.startActivity(Intent(ctx, targetActivity)) }) {
+        TextButton(onClick = { ctx.startActivity(Intent(ctx, targetActivity)) }, modifier = Modifier.tvRemoteFocus()) {
             Text("Open")
         }
     }
@@ -761,8 +739,8 @@ private fun TextEditDialog(
                 modifier = Modifier.fillMaxWidth(),
             )
         },
-        confirmButton = { TextButton(onClick = { onConfirm(value) }) { Text("OK") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        confirmButton = { TextButton(onClick = { onConfirm(value) }, modifier = Modifier.tvRemoteFocus()) { Text("OK") } },
+        dismissButton = { TextButton(onClick = onDismiss, modifier = Modifier.tvRemoteFocus()) { Text("Cancel") } },
     )
 }
 
@@ -777,7 +755,7 @@ private fun ConfirmDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         confirmButton = { TextButton(onClick = onConfirm) { Text(confirmText) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss, modifier = Modifier.tvRemoteFocus()) { Text("Cancel") } },
     )
 }
 

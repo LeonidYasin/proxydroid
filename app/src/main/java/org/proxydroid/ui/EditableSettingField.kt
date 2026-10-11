@@ -45,7 +45,7 @@ internal fun EditableSettingField(
     OutlinedButton(
         onClick = { draft = value; error = null; editing = true },
         enabled = enabled,
-        modifier = modifier.testTag("setting-$label"),
+        modifier = modifier.tvRemoteFocus().testTag("setting-$label"),
     ) {
         Column(Modifier.fillMaxWidth()) {
             Text(label, style = MaterialTheme.typography.labelMedium)
@@ -83,7 +83,7 @@ internal fun EditableSettingField(
                 }
             },
             confirmButton = {
-                TextButton(onClick = {
+                TextButton(modifier = Modifier.tvRemoteFocus(), onClick = {
                     error = validate(draft)
                     if (error == null) {
                         onValueChange(draft)
@@ -92,7 +92,7 @@ internal fun EditableSettingField(
                 }) { Text("OK") }
             },
             dismissButton = {
-                TextButton(onClick = { editing = false }) { Text("Cancel") }
+                TextButton(modifier = Modifier.tvRemoteFocus(), onClick = { editing = false }) { Text("Cancel") }
             },
         )
     }
