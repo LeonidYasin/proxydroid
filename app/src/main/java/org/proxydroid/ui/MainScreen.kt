@@ -352,7 +352,7 @@ internal fun InternetActions(state: MainUiState, onOpenYouTube: () -> Unit, onRe
 private fun LivenessIndicator(state: MainUiState, onCheckAlive: () -> Unit) {
     val (dotColor, label) = when (state.isAlive) {
         true -> Color(0xFF2BAA63) to "TCP port reachable — forwarding/internet not proven"
-        false -> Color(0xFFE53935) to "TCP port unreachable — run detailed diagnostics"
+        false -> MaterialTheme.colorScheme.error to "TCP port unreachable — run detailed diagnostics"
         null -> Color(0xFF9E9E9E) to "Proxy not checked yet"
     }
     Column {
@@ -384,7 +384,7 @@ private fun LivenessIndicator(state: MainUiState, onCheckAlive: () -> Unit) {
             Text(
                 text = err,
                 style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFFE53935),
+                color = MaterialTheme.colorScheme.error,
             )
         }
     }

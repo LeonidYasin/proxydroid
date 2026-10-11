@@ -74,10 +74,17 @@ public class MinifiedReleaseSmokeTest {
                 android.graphics.Bitmap.Config.ARGB_8888);
         drawable.setBounds(0, 0, width, height);
         drawable.draw(new android.graphics.Canvas(image));
-        java.io.File directory = context.getExternalFilesDir(null);
-        assertNotNull(directory);
-        try (java.io.FileOutputStream out = new java.io.FileOutputStream(new java.io.File(directory, name))) {
-            assertTrue(image.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out));
+        // Export only generated public launcher pixels to the instrumentation
+        // shell's CI temp directory. Do not weaken scoped-storage protection.
+        java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+        assertTrue(image.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, bytes));
+        String encoded = android.util.Base64.encodeToString(bytes.toByteArray(), android.util.Base64.NO_WRAP);
+        android.os.ParcelFileDescriptor output = InstrumentationRegistry.getInstrumentation()
+                .getUiAutomation().executeShellCommand("echo '" + encoded +
+                        "' | base64 -d > /data/local/tmp/" + name);
+        try (java.io.InputStream stream = new android.os.ParcelFileDescriptor.AutoCloseInputStream(output)) {
+            byte[] buffer = new byte[1024];
+            while (stream.read(buffer) != -1) { }
         }
         image.recycle();
     }

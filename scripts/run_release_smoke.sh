@@ -23,8 +23,8 @@ timeout --signal=TERM --kill-after=15s 180s adb shell am instrument -w \
 grep -Eq '^OK \(3 tests\)' app/build/reports/release-smoke/instrumentation.txt
 ! grep -Eq 'FAILURES|INSTRUMENTATION_FAILED|Process crashed' app/build/reports/release-smoke/instrumentation.txt
 
-adb pull /sdcard/Android/data/org.proxydroid/files/launcher-banner.png app/build/reports/release-smoke/launcher-banner.png
-adb pull /sdcard/Android/data/org.proxydroid/files/launcher-icon.png app/build/reports/release-smoke/launcher-icon.png
+adb pull /data/local/tmp/launcher-banner.png app/build/reports/release-smoke/launcher-banner.png
+adb pull /data/local/tmp/launcher-icon.png app/build/reports/release-smoke/launcher-icon.png
 # Visual QA captures from the actual signed minified target, not a mockup.
 adb shell settings put system accelerometer_rotation 0
 adb shell wm size 720x1280
