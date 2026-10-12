@@ -29,6 +29,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.proxydroid.Profile
+import org.proxydroid.ProfileStore
 import org.proxydroid.utils.NetworkUtils
 import org.proxydroid.utils.Utils
 
@@ -87,6 +88,7 @@ class MainViewModel @JvmOverloads constructor(app: Application,
     private val settings: SharedPreferences =
         PreferenceManager.getDefaultSharedPreferences(app)
 
+    private val profileStore = ProfileStore(settings)
     private val _state = MutableStateFlow(MainUiState())
     val state: StateFlow<MainUiState> = _state.asStateFlow()
 
@@ -189,11 +191,9 @@ class MainViewModel @JvmOverloads constructor(app: Application,
     fun reload() {
         // SharedPreferences are in-memory; avoid an old IO snapshot overwriting
         // a newly edited/refreshed Host after onResume or initial startup.
-        val current = settings.getString("profile", "1") ?: "1"
-        val profile = Profile().also { it.getProfile(settings) }
-        if (profile.proxyType.isEmpty()) profile.proxyType = "socks5"
-        _state.value = _state.value.copy(profile = profile, profiles = loadProfileList(),
-            currentProfileId = current, isWorking = Utils.isWorking(), isConnecting = Utils.isConnecting(),
+        val selected = profileStore.current()
+        _state.value = _state.value.copy(profile = selected.profile, profiles = selected.uiEntries(),
+            currentProfileId = selected.id, isWorking = Utils.isWorking(), isConnecting = Utils.isConnecting(),
             bootStatus = settings.getString(BootStatus.KEY, null),
             lanAutoScan = settings.getBoolean("lanDiscoveryEnabled", false))
         refreshGateway()
@@ -207,9 +207,8 @@ class MainViewModel @JvmOverloads constructor(app: Application,
         // apply() changes memory synchronously and writes disk asynchronously.
         // Serialize UI edits here: an older IO coroutine must not overwrite a
         // just-refreshed gateway or persist an edit under a different profile ID.
-        val id = _state.value.currentProfileId
-        next.setProfile(settings)
-        settings.edit().putString(id, next.toString()).apply()
+        val selected = profileStore.save(next)
+        _state.value = _state.value.copy(profiles = selected.uiEntries())
     }
 
     fun toggleAdvanced() {
@@ -310,10 +309,8 @@ class MainViewModel @JvmOverloads constructor(app: Application,
             reportConnectionError("Сеть поиска уже изменилась. Повторите поиск перед выбором прокси.")
             return false
         }
-        persistCurrentProfileJson(_state.value.profile)
         gatewayJob?.cancel(); gatewayRequest++
         invalidateDiagnostics()
-        val id = nextProfileId()
         val p = Profile().apply {
             init(); name = "LAN ${proxy.host}:${proxy.port}"
             host = proxy.host; port = proxy.port; proxyType = proxy.type
@@ -323,9 +320,7 @@ class MainViewModel @JvmOverloads constructor(app: Application,
             isBypassApps = _state.value.profile.isBypassApps
             autoStartOnBoot = false
         }
-        settings.edit().putString("profile", id).putString("profile$id", p.name).apply()
-        p.setProfile(settings); settings.edit().putString(id, p.toString()).apply()
-        _state.value = _state.value.copy(profile = p, currentProfileId = id, profiles = loadProfileList())
+        applySelection(profileStore.create(p))
         return true
     }
 
@@ -450,122 +445,39 @@ class MainViewModel @JvmOverloads constructor(app: Application,
 
     fun selectProfile(id: String) {
         if (id == _state.value.currentProfileId) return
-        invalidateDiagnostics()
-        gatewayJob?.cancel(); gatewayRequest++
-        viewModelScope.launch {
-            // Save current profile JSON under its ID, then load the new one.
-            persistCurrentProfileJson(_state.value.profile)
-            settings.edit().putString("profile", id).apply()
-            val raw = settings.getString(id, "").orEmpty()
-            val next = Profile().apply {
-                if (raw.isEmpty()) {
-                    init()
-                    name = profileNameFor(id)
-                } else {
-                    decodeJson(raw)
-                }
-                if (proxyType.isEmpty()) proxyType = "socks5"
-            }
-            next.setProfile(settings)
-            _state.value = _state.value.copy(
-                profile = next,
-                currentProfileId = id,
-                profiles = loadProfileList(),
-            )
-            refreshGateway()
-        }
+        val selected = profileStore.select(id) ?: return
+        prepareProfileChange()
+        applySelection(selected)
+        refreshGateway()
     }
 
     fun newProfile(name: String) {
-        invalidateDiagnostics()
-        gatewayJob?.cancel(); gatewayRequest++
-        viewModelScope.launch {
-            persistCurrentProfileJson(_state.value.profile)
-            val nextId = nextProfileId()
-            val p = Profile().apply {
-                init()
-                this.name = if (name.isBlank()) profileNameFor(nextId) else name
-                proxyType = "socks5"
-            }
-            settings.edit().putString("profile", nextId).apply()
-            p.setProfile(settings)
-            settings.edit().putString(nextId, p.toString()).apply()
-            _state.value = _state.value.copy(
-                profile = p,
-                currentProfileId = nextId,
-                profiles = loadProfileList(),
-            )
-        }
+        prepareProfileChange()
+        applySelection(profileStore.create(Profile().apply { init(); this.name = name.trim() }))
     }
 
     fun renameCurrent(newName: String) {
         if (newName.isBlank()) return
-        updateProfile { name = newName }
-        viewModelScope.launch {
-            _state.value = _state.value.copy(profiles = loadProfileList())
-        }
+        updateProfile { name = newName.trim() }
     }
 
     fun deleteCurrent() {
+        prepareProfileChange()
+        applySelection(profileStore.deleteCurrent())
+        refreshGateway()
+    }
+
+    private fun prepareProfileChange() {
+        invalidateDiagnostics()
         gatewayJob?.cancel(); gatewayRequest++
-        viewModelScope.launch {
-            val cur = _state.value.currentProfileId
-            settings.edit().remove(cur).apply()
-            // Pick the first remaining profile (or create a fresh one).
-            val remaining = loadProfileList().filter { it.id != cur }
-            val next = remaining.firstOrNull()?.id ?: "1"
-            val raw = settings.getString(next, "").orEmpty()
-            val p = Profile().apply {
-                if (raw.isEmpty()) {
-                    init(); name = profileNameFor(next); proxyType = "socks5"
-                } else decodeJson(raw)
-            }
-            settings.edit().putString("profile", next).apply()
-            p.setProfile(settings)
-            _state.value = _state.value.copy(
-                profile = p,
-                currentProfileId = next,
-                profiles = remaining,
-            )
-            refreshGateway()
-        }
     }
 
-    private fun persistCurrentProfileJson(p: Profile) {
-        val cur = _state.value.currentProfileId
-        settings.edit().putString(cur, p.toString()).apply()
-    }
+    private fun ProfileStore.Selection.uiEntries(): List<ProfileEntry> =
+        entries.map { ProfileEntry(it.id, it.name) }
 
-    private fun nextProfileId(): String {
-        val raw = settings.getString("profileValues", "") ?: ""
-        val ids = (raw.split("|").mapNotNull { it.trim().takeIf { s -> s.isNotEmpty() }?.toIntOrNull() } + listOfNotNull(_state.value.currentProfileId.toIntOrNull())).distinct()
-        val next = ((ids.maxOrNull() ?: 0) + 1).toString()
-        // Maintain the legacy profileEntries / profileValues bookkeeping.
-        val values = (ids + next.toInt()).joinToString("|") + "|"
-        val entries = ids.joinToString("|") { profileNameFor(it.toString()) } +
-            (if (ids.isNotEmpty()) "|" else "") + profileNameFor(next) + "|"
-        settings.edit()
-            .putString("profileValues", values)
-            .putString("profileEntries", entries)
-            .apply()
-        return next
-    }
-
-    private fun profileNameFor(id: String): String =
-        settings.getString("profile$id", null) ?: "Profile $id"
-
-    private fun loadProfileList(): List<ProfileEntry> {
-        val raw = settings.getString("profileValues", null)
-        val ids = if (raw.isNullOrEmpty()) {
-            // Bootstrap a single default profile.
-            listOf("1").also {
-                settings.edit().putString("profileValues", "1|").apply()
-                settings.edit().putString("profileEntries", "Profile 1|").apply()
-            }
-        } else {
-            raw.split("|").mapNotNull { it.trim().takeIf { s -> s.isNotEmpty() } }
-        }
-        return ids.map { ProfileEntry(it, profileNameFor(it)) }
+    private fun applySelection(selected: ProfileStore.Selection) {
+        _state.value = _state.value.copy(profile = selected.profile,
+            currentProfileId = selected.id, profiles = selected.uiEntries())
     }
 
     companion object {
