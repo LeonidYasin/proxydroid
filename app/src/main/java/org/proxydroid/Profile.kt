@@ -97,7 +97,14 @@ class Profile {
     }
 
     fun setProfile(settings: SharedPreferences) {
-        settings.edit().apply {
+        val editor = settings.edit()
+        writeTo(editor)
+        editor.apply()
+    }
+
+    /** Write the flat active profile into the caller's atomic preference update. */
+    internal fun writeTo(editor: SharedPreferences.Editor) {
+        editor.apply {
             putString("name", name)
             putString("host", host)
             putString("port", port.toString())
@@ -118,7 +125,6 @@ class Profile {
             putBoolean("isAutoConnect", isAutoConnect)
             putBoolean("useGatewayAsHost", useGatewayAsHost)
             putBoolean("autoStartOnBoot", autoStartOnBoot)
-            apply()
         }
     }
 
